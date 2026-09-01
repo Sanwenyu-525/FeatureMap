@@ -289,6 +289,108 @@ program
     }
   });
 
+/** Parse `GITHUB_REPOSITORY` ("owner/repo") into parts. */
+function parseGitHubRepository(spec?: string): { owner?: string; repo?: string } {
+  if (!spec) return {};
+  const [owner, repo] = spec.split('/');
+  return { owner: owner || undefined, repo: repo || undefined };
+}
+
+program
+  .command('gh')
+  .description('GitHub 集成（Phase 4 / ADR-0006）。')
+  .command('check')
+  .description('在 PR head 上创建/更新 FeatureMap 分析 check run（薄传输，ADR-0006）。')
+  .option('--base <ref>', '基准 ref（默认 GITHUB_BASE_REF 环境变量或 main）')
+  .option('--head <sha>', 'PR head SHA（默认 GITHUB_SHA 环境变量）')
+  .option('--owner <owner>', '仓库 owner（默认取 GITHUB_REPOSITORY）')
+  .option('--repo <repo>', '仓库名（默认取 GITHUB_REPOSITORY）')
+  .option('--check-name <name>', 'check run 名称（默认 "FeatureMap / Pull Request Analysis"）')
+  .option('--skip-scan', '跳过扫描，使用已有本地 DB')
+  .option('--dry-run', '只渲染 check 内容并打印，不发送任何请求')
+  .option('--json', '输出机器可读 JSON')
+  .action(async (opts: {
+    base?: string;
+    head?: string;
+    owner?: string;
+    repo?: string;
+    checkName?: string;
+    skipScan?: boolean;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const repoRoot = process.cwd();
+    const ghRepo = parseGitHubRepository(process.env.GITHUB_REPOSITORY);
+    const owner = opts.owner ?? ghRepo.owner;
+    const repo = opts.repo ?? ghRepo.repo;
+    const headSha = opts.head ?? process.env.GITHUB_SHA;
+    const base = opts.base ?? process.env.GITHUB_BASE_REF ?? 'main';
+    const range = `${base}..HEAD`;
+
+    if (!owner || !repo) {
+      console.error('缺少仓库标识：请传 --owner/--repo，或设置 GITHUB_REPOSITORY（owner/repo）。');
+      process.exitCode = 1;
+      return;
+    }
+    if (!headSha) {
+      console.error('缺少 head SHA：请传 --head，或设置 GITHUB_SHA。');
+      process.exitCode = 1;
+      return;
+    }
+
+    const { buildPrReport, runScan } = await import('@featuremap/pipeline');
+    const { GitHubProvider, renderPrCheck, runGitHubCheck } = await import('@featuremap/scm');
+
+    if (opts.dryRun) {
+      try {
+        if (!opts.skipScan) await runScan(repoRoot, {});
+        const report = await buildPrReport(repoRoot, { range });
+        const rendered = renderPrCheck(report);
+        if (opts.json) {
+          console.log(JSON.stringify(rendered, null, 2));
+        } else {
+          console.log(`[dry-run] ${owner}/${repo} ${range}`);
+          console.log(`结论：${rendered.conclusion}`);
+          console.log(`摘要：${rendered.summary}`);
+          console.log('');
+          console.log(rendered.text);
+        }
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      console.error('缺少 GITHUB_TOKEN 环境变量（或使用 --dry-run 只渲染）。');
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const provider = new GitHubProvider({ token, owner, repo });
+      const result = await runGitHubCheck(repoRoot, {
+        provider,
+        owner,
+        repo,
+        headSha,
+        range,
+        checkName: opts.checkName,
+        scan: !opts.skipScan,
+      });
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`Check run ${result.id}（${result.updated ? '已更新' : '已创建'}） @ ${owner}/${repo} ${headSha}`);
+        console.log(`结论：${result.ok ? '分析成功' : '分析失败'}：${result.summary}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
 program
   .command('feature')
   .description('以终端友好的形式输出功能上下文。')

@@ -1,0 +1,22 @@
+{
+  "name": "@featuremap/github-app",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap GitHub App: webhook receiver that posts feature-aware PR analysis as checks + rare review comments (Phase 4 / ADR-0007).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@featuremap/scm": "workspace:*",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
+}

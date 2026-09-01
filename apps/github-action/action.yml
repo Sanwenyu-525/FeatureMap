@@ -1,0 +1,12 @@
+name: 'FeatureMap'
+description: 'Feature-aware pull request analysis: affected features, risk, tests and mapping drift as a GitHub check run.'
+inputs:
+  token:
+    description: 'GitHub token with checks:write permission (use ${{ secrets.GITHUB_TOKEN }})'
+    required: true
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+branding:
+  icon: 'activity'
+  color: 'blue'
