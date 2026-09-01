@@ -204,12 +204,27 @@ describe('analyzeImpact with commit range (Milestone 11, ADR-0004 §1)', () => {
       .values({ id: assetId({ type: 'file', path: 'src/auth/login.js' }), type: 'file', path: 'src/auth/login.js' })
       .run();
     db.insert(schema.features)
-      .values({ id: 'feature:login', name: 'Login', pattern: 'Authentication', confidence: 0.9 })
+      .values({ id: 'feature:login', name: 'Login', pattern: 'Authentication', confidence: 0.9, health: { tests: 'present' } })
       .run();
     db.insert(schema.featureAssets)
       .values({
         featureId: 'feature:login',
         assetId: assetId({ type: 'file', path: 'src/auth/login.js' }),
+        confidence: 0.9,
+      })
+      .run();
+    // Test asset associated with the feature (test-import → closure).
+    db.insert(schema.assets)
+      .values({
+        id: assetId({ type: 'file', path: 'tests/auth/login.test.js' }),
+        type: 'test',
+        path: 'tests/auth/login.test.js',
+      })
+      .run();
+    db.insert(schema.featureAssets)
+      .values({
+        featureId: 'feature:login',
+        assetId: assetId({ type: 'file', path: 'tests/auth/login.test.js' }),
         confidence: 0.9,
       })
       .run();
@@ -224,6 +239,13 @@ describe('analyzeImpact with commit range (Milestone 11, ADR-0004 §1)', () => {
     expect(reasons).toContain('changed symbol(s): login');
     // Milestone 12: symbol-level direct match → HIGH (ADR-0004 §3).
     expect(login?.severity).toBe('HIGH');
+    // Milestone 13: the HIGH feature's associated test is ✓ recommended
+    // (ADR-0004 §5) — sourced from the test → closure association.
+    expect(result.recommendedTests).toContainEqual({
+      path: 'tests/auth/login.test.js',
+      status: 'recommended',
+      featureId: 'feature:login',
+    });
   });
 });
 

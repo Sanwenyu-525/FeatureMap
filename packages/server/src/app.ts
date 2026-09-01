@@ -281,6 +281,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       })),
       sharedInfrastructure: impact.sharedInfrastructure,
       suppressedUncertainty: impact.suppressedUncertainty,
+      recommendedTests: impact.recommendedTests,
       potentiallyStaleDocuments: impact.potentiallyStaleDocuments,
     };
     return body;

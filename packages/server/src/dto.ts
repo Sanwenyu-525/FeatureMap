@@ -128,6 +128,12 @@ export interface ChangesResponse {
     confidence: number;
     reason: string;
   }>;
+  /** Recommended tests for this change set (ADR-0004 §5). */
+  recommendedTests: Array<{
+    path: string;
+    status: 'recommended' | 'related';
+    featureId: string;
+  }>;
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
 }
 

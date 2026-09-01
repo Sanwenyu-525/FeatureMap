@@ -193,6 +193,13 @@ program
           console.log(`  ${u.featureName ?? u.featureId} —— 置信度 ${u.confidence}（${u.reason}）`);
         }
       }
+      if (result.recommendedTests.length > 0) {
+        console.log('');
+        console.log('推荐测试（仅建议，非完整影响断言）：');
+        for (const t of result.recommendedTests) {
+          console.log(`  ${t.status === 'recommended' ? '✓' : '?'} ${t.path}`);
+        }
+      }
       if (result.potentiallyStaleDocuments.length > 0) {
         console.log('');
         console.log('可能过期的文档：');

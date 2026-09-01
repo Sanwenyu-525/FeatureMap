@@ -66,6 +66,23 @@ export interface SuppressedUncertainty {
   reason: string;
 }
 
+/**
+ * Recommended test for a change (ADR-0004 §5).
+ *
+ * `recommended` (✓) — associated with a HIGH/MEDIUM affected feature;
+ * `related` (?) — associated with lower-severity / transitively affected
+ * code. FeatureMap labels this a recommendation, never a complete
+ * coverage-claim.
+ */
+export type RecommendedTestStatus = 'recommended' | 'related';
+
+export interface RecommendedTest {
+  path: string;
+  status: RecommendedTestStatus;
+  /** Feature the test is associated with (via test-import → closure). */
+  featureId: string;
+}
+
 export interface ImpactResult {
   changedFiles: Array<{ path: string; changeType: string; commitSha: string }>;
   /** Ranked by severity then confidence; below-threshold evidence is excluded. */
@@ -74,6 +91,8 @@ export interface ImpactResult {
   sharedInfrastructure: SharedInfrastructureChange[];
   /** Hits that did not reach the surfaceable threshold, kept visible. */
   suppressedUncertainty: SuppressedUncertainty[];
+  /** Recommended tests for this change set (ADR-0004 §5). */
+  recommendedTests: RecommendedTest[];
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
   currentBranch?: string;
   baseBranch?: string;
@@ -311,6 +330,19 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
         ];
       });
 
+    // Recommended tests (ADR-0004 §5): HIGH/MEDIUM affected features get
+    // a ✓ recommendation; LOW severity tests are marked ? (related). The
+    // association source is the existing test-import → feature-closure
+    // relation built by feature discovery — this is a recommendation,
+    // not a coverage claim.
+    const recommendedTests: RecommendedTest[] = [];
+    for (const f of affectedFeatures) {
+      const status: RecommendedTestStatus = f.severity === 'LOW' ? 'related' : 'recommended';
+      for (const test of f.tests) {
+        recommendedTests.push({ path: test, status, featureId: f.featureId });
+      }
+    }
+
     // Documentation drift: a changed file described by a document
     // suggests the document may now be stale (deterministic DESCRIBED_BY).
     const staleDocs = new Map<string, string>();
@@ -338,6 +370,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
       affectedFeatures,
       sharedInfrastructure,
       suppressedUncertainty,
+      recommendedTests,
       potentiallyStaleDocuments: [...staleDocs.entries()].map(([path, reason]) => ({ path, reason })),
       currentBranch: stats.currentBranch,
       baseBranch: config?.scan.baseBranch,
