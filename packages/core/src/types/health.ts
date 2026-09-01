@@ -4,9 +4,15 @@ import type { FeaturePattern, FeatureStatus, InstructionLevel } from './entities
  * Explainable feature health (docs/MVP_SPEC.md §9, docs/DATA_MODEL.md §5).
  *
  * Never expose opaque completion percentages such as "87% complete";
- * derive health states from evidence instead.
+ * derive health states from evidence instead. `present` applies to
+ * evidence-bearing dimensions (tests, documentation) per MVP_SPEC §9.
  */
-export type HealthState = 'complete' | 'partial' | 'missing' | 'unknown';
+export type HealthState =
+  | 'complete'
+  | 'partial'
+  | 'present'
+  | 'missing'
+  | 'unknown';
 
 export interface FeatureHealth {
   implementation: HealthState;
