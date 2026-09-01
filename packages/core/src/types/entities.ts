@@ -35,7 +35,8 @@ export type CodeAssetType =
   | 'component'
   | 'endpoint'
   | 'data_entity'
-  | 'test';
+  | 'test'
+  | 'cli_command';
 
 export interface CodeAsset {
   id: string;
@@ -90,7 +91,8 @@ export type EntityType =
   | 'test'
   | 'document'
   | 'instruction'
-  | 'commit';
+  | 'commit'
+  | 'cli_command';
 
 /** Whether evidence was produced by deterministic analysis, semantic (LLM) inference, or manual correction. */
 export type EvidenceOrigin = 'deterministic' | 'semantic' | 'manual';

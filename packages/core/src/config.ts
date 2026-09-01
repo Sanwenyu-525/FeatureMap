@@ -25,6 +25,7 @@ export const MVP_ANALYZER_IDS = [
   'nestjs',
   'prisma',
   'markdown',
+  'cli',
 ] as const;
 
 export type AnalyzerId = (typeof MVP_ANALYZER_IDS)[number];
@@ -78,6 +79,9 @@ export const DEFAULT_IGNORE_RULES = [
   '.git/**',
   '.env',
   '.env.*',
+  // Fixture repositories are test inputs, not product features
+  // (found during dogfooding: they otherwise produce noise features).
+  'test-fixtures/**',
 ];
 
 /** Produce the default configuration used by `featuremap init`. */

@@ -49,7 +49,7 @@ describe('GET /api/overview', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { counts: Record<string, number> };
     expect(body.counts.files).toBeGreaterThan(0);
-    expect(body.counts.endpoints).toBe(2);
+    expect(body.counts.endpoints).toBe(3);
     expect(body.counts.documents).toBe(1);
   });
 });

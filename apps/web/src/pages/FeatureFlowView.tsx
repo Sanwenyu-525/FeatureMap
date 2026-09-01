@@ -98,35 +98,35 @@ export default function FeatureFlowView({ feature }: { feature: FeatureDetail })
       </div>
       <aside className="w-72 shrink-0 rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Why? — evidence explanation
+          为什么？——证据解释
         </h3>
         {selection ? (
           <div>
             <p className="font-medium">{selection.label}</p>
             {selection.category ? (
-              <p className="mt-1 text-xs text-slate-500">category: {selection.category}</p>
+              <p className="mt-1 text-xs text-slate-500">类别: {selection.category}</p>
             ) : null}
             {selection.confidence !== undefined ? (
               <p className="mt-1 text-xs text-slate-500">
-                confidence: {selection.confidence} ({confidenceCategory(selection.confidence)})
+                置信度: {selection.confidence}（{confidenceCategory(selection.confidence)}）
               </p>
             ) : null}
             <ul className="mt-3 space-y-2 font-mono text-xs text-slate-600">
               {selection.evidence && selection.evidence.length > 0 ? (
                 selection.evidence.map((e) => (
                   <li key={e.id}>
-                    {e.sourceId} → {e.relationType} → {e.targetId} ({e.confidence}, {e.analyzerId})
+                    {e.sourceId} → {e.relationType} → {e.targetId}（{e.confidence}，{e.analyzerId}）
                   </li>
                 ))
               ) : (
-                <li className="text-slate-400">Select a node to inspect its evidence.</li>
+                <li className="text-slate-400">点击任意节点查看它的证据。</li>
               )}
             </ul>
           </div>
         ) : (
           <p className="text-xs text-slate-400">
-            Click any node to see the evidence chain behind it. Solid green edges are confirmed
-            facts; animated blue edges are inferred (docs/FEATURE_VISUALIZATION.md §6).
+            点击任意节点查看它背后的证据链。绿色实线边是已确认事实；蓝色动画边是推断结果
+            （docs/FEATURE_VISUALIZATION.md §6）。
           </p>
         )}
       </aside>

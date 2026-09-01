@@ -137,6 +137,10 @@ interface EndpointInfo {
   resource: string;
   file: string;
   handlerFile?: string;
+  /** Inline arrow handlers prove implementation without a symbol. */
+  inlineHandler?: boolean;
+  /** CLI commands are always "handled" by their registration site. */
+  isCommand?: boolean;
 }
 
 /** Extract the resource segment from a route path (e.g. /api/login → login). */
@@ -163,17 +167,31 @@ export function discoverFeatures(
   const handlerOfEndpoint = new Map<string, string>();
 
   for (const asset of assets) {
-    if (asset.type !== 'endpoint' || asset.name === undefined) continue;
-    const meta = (asset.metadata ?? {}) as { method?: string; routePath?: string };
-    const method = meta.method ?? asset.name.split(' ')[0] ?? 'GET';
-    const routePath = meta.routePath ?? asset.name.split(' ').slice(1).join(' ');
-    endpoints.set(`endpoint:${asset.name}`, {
-      asset,
-      method,
-      routePath,
-      resource: resourceOf(routePath),
-      file: asset.path ?? '',
-    });
+    if (asset.type === 'endpoint' && asset.name !== undefined) {
+      const meta = (asset.metadata ?? {}) as { method?: string; routePath?: string; handler?: string };
+      const method = meta.method ?? asset.name.split(' ')[0] ?? 'GET';
+      const routePath = meta.routePath ?? asset.name.split(' ').slice(1).join(' ');
+      endpoints.set(`endpoint:${asset.name}`, {
+        asset,
+        method,
+        routePath,
+        resource: resourceOf(routePath),
+        file: asset.path ?? '',
+        inlineHandler: meta.handler === 'inline',
+      });
+    } else if (asset.type === 'cli_command' && asset.name !== undefined) {
+      const meta = (asset.metadata ?? {}) as { command?: string };
+      const command = meta.command ?? asset.name.replace(/^featuremap\s+/, '');
+      endpoints.set(`cli_command:${asset.name}`, {
+        asset,
+        method: 'CLI',
+        routePath: `featuremap ${command}`,
+        resource: command,
+        file: asset.path ?? '',
+        inlineHandler: true,
+        isCommand: true,
+      });
+    }
   }
 
   for (const ev of evidence) {
@@ -247,7 +265,12 @@ export function discoverFeatures(
     const seedFiles = [...new Set([...infos.map((i) => i.file), ...handlerFiles])].filter(Boolean);
     const closure = closureOf(seedFiles, imports, hubFiles);
 
-    const withHandler = infos.filter((i) => handlerOfEndpoint.has(`endpoint:${i.asset.name}`));
+    const withHandler = infos.filter(
+      (i) =>
+        handlerOfEndpoint.has(`endpoint:${i.asset.name}`) ||
+        i.inlineHandler === true ||
+        i.isCommand === true,
+    );
     const allHaveHandler = withHandler.length === infos.length;
 
     // Pattern classification: deterministic keyword / shape rules.

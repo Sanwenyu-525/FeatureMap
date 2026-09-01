@@ -122,7 +122,13 @@ export function getFeatureContext(
     const code = section(
       include.includes('code'),
       ranked
-        .filter((r) => r.asset.type === 'file' || r.asset.type === 'symbol' || r.asset.type === 'test')
+        .filter(
+          (r) =>
+            r.asset.type === 'file' ||
+            r.asset.type === 'symbol' ||
+            r.asset.type === 'test' ||
+            r.asset.type === 'cli_command',
+        )
         .map((r) => ({
           type: r.asset.type,
           path: r.asset.path ?? undefined,

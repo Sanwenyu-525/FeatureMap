@@ -17,19 +17,18 @@ export default function FeaturesPage() {
   if (error) {
     return (
       <>
-        <PageTitle title="Features" />
+        <PageTitle title="功能" />
         <ErrorNotice error={error} />
       </>
     );
   }
-  if (!features) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!features) return <p className="text-sm text-slate-500">加载中…</p>;
   if (features.length === 0) {
     return (
       <>
-        <PageTitle title="Features" subtitle="Hierarchical feature list grouped into product areas." />
+        <PageTitle title="功能" subtitle="按产品能力分组的功能列表。" />
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No features discovered yet. Feature discovery arrives with Milestone 2 — the scan
-          already indexes files, endpoints, documents and Git evidence.
+          尚未发现任何功能。功能发现能力随 Milestone 2 提供——扫描已经索引文件、端点、文档与 Git 证据。
         </div>
       </>
     );
@@ -37,7 +36,7 @@ export default function FeaturesPage() {
 
   return (
     <>
-      <PageTitle title="Features" subtitle="Grouped by product capability; confidence reflects evidence strength." />
+      <PageTitle title="功能" subtitle="按产品能力分组；置信度反映证据强度。" />
       <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
         {features.map((f) => (
           <li key={f.id} className="px-4 py-3">
@@ -47,7 +46,7 @@ export default function FeaturesPage() {
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{f.pattern}</span>
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">
-                {f.confidence === 1 ? 'Confirmed' : f.confidence >= 0.5 ? 'Inferred' : 'Uncertain'}
+                {f.confidence === 1 ? '已确认' : f.confidence >= 0.5 ? '推断' : '不确定'}
               </span>
               {f.health ? (
                 <>
@@ -60,7 +59,7 @@ export default function FeaturesPage() {
                           : 'bg-slate-100 text-slate-500'
                     }`}
                   >
-                    impl: {f.health.implementation}
+                    实现: {f.health.implementation}
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 ${
@@ -69,7 +68,7 @@ export default function FeaturesPage() {
                         : 'bg-red-50 text-red-600'
                     }`}
                   >
-                    tests: {f.health.tests}
+                    测试: {f.health.tests}
                   </span>
                   <span
                     className={`rounded-full px-2 py-0.5 ${
@@ -78,7 +77,7 @@ export default function FeaturesPage() {
                         : 'bg-red-50 text-red-600'
                     }`}
                   >
-                    docs: {f.health.documentation}
+                    文档: {f.health.documentation}
                   </span>
                 </>
               ) : null}

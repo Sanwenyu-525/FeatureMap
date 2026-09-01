@@ -17,22 +17,22 @@ export default function ChangesPage() {
   if (error) {
     return (
       <>
-        <PageTitle title="Changes" />
+        <PageTitle title="变更" />
         <ErrorNotice error={error} />
       </>
     );
   }
-  if (!changes) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!changes) return <p className="text-sm text-slate-500">加载中…</p>;
 
   return (
     <>
       <PageTitle
-        title="Changes"
-        subtitle={`${changes.currentBranch ?? 'unknown branch'} vs ${changes.baseBranch}`}
+        title="变更"
+        subtitle={`${changes.currentBranch ?? '未知分支'} 对比 ${changes.baseBranch}`}
       />
       {changes.changedFiles.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No uncommitted changes in the working tree.
+          工作区没有未提交的变更。
         </div>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
@@ -47,9 +47,9 @@ export default function ChangesPage() {
         </ul>
       )}
 
-      <h2 className="mb-2 mt-8 text-sm font-medium text-slate-700">Affected features</h2>
+      <h2 className="mb-2 mt-8 text-sm font-medium text-slate-700">受影响的功能</h2>
       {changes.affectedFeatures.length === 0 ? (
-        <p className="text-sm text-slate-500">None with surfaceable confidence.</p>
+        <p className="text-sm text-slate-500">没有达到可展示置信度的影响。</p>
       ) : (
         <ul className="space-y-3">
           {changes.affectedFeatures.map((f) => (
@@ -62,7 +62,7 @@ export default function ChangesPage() {
                   {f.featureName}
                 </Link>
                 <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">
-                  confidence {f.confidence}
+                  置信度 {f.confidence}
                 </span>
               </div>
               <ul className="mt-2 space-y-1 font-mono text-xs text-slate-500">
@@ -77,9 +77,7 @@ export default function ChangesPage() {
 
       {changes.potentiallyStaleDocuments.length > 0 ? (
         <>
-          <h2 className="mb-2 mt-8 text-sm font-medium text-slate-700">
-            Potentially stale documentation
-          </h2>
+          <h2 className="mb-2 mt-8 text-sm font-medium text-slate-700">可能过期的文档</h2>
           <ul className="space-y-1 text-sm">
             {changes.potentiallyStaleDocuments.map((d) => (
               <li key={d.path} className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">

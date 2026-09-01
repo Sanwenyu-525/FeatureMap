@@ -74,7 +74,7 @@ export const assets = sqliteTable(
   {
     id: text('id').primaryKey(),
     type: text('type', {
-      enum: ['file', 'symbol', 'component', 'endpoint', 'data_entity', 'test'],
+      enum: ['file', 'symbol', 'component', 'endpoint', 'data_entity', 'test', 'cli_command'],
     }).notNull(),
     path: text('path'),
     name: text('name'),
