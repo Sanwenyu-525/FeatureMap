@@ -87,6 +87,27 @@ export interface FeatureDetail extends FeatureListItem {
   }>;
 }
 
+export interface FeatureTimeline {
+  featureId: string;
+  featureName?: string;
+  commits: Array<{
+    sha: string;
+    author: string;
+    email?: string;
+    committedAt?: string;
+    message?: string;
+    kind: string;
+    changedPaths: string[];
+  }>;
+  contributors: Array<{ name: string; count: number }>;
+  stats: {
+    commitCount: number;
+    fileCount: number;
+    contributorCount: number;
+    changeKinds: Record<string, number>;
+  };
+}
+
 export interface ChangesResponse {
   currentBranch?: string;
   baseBranch: string;
@@ -138,6 +159,7 @@ export const api = {
   overview: () => request<OverviewResponse>('/overview'),
   features: () => request<FeatureListItem[]>('/features'),
   feature: (id: string) => request<FeatureDetail>(`/features/${encodeURIComponent(id)}`),
+  featureChanges: (id: string) => request<FeatureTimeline>(`/features/${encodeURIComponent(id)}/changes`),
   changes: () => request<ChangesResponse>('/changes'),
   analyzers: () => request<AnalyzerStatus[]>('/analyzers'),
   scan: (mode: 'incremental' | 'full') =>

@@ -148,11 +148,12 @@ program
 
 program
   .command('impact')
-  .description('基于证据遍历，分析当前变更影响哪些功能。')
-  .action(async () => {
+  .description('基于证据遍历，分析变更影响哪些功能。可传提交区间查看历史变更的影响（ADR-0004）。')
+  .argument('[range]', '可选：提交区间（HEAD、HEAD~1..HEAD、main..HEAD）；缺省为工作树 + 分支差异')
+  .action(async (range?: string) => {
     try {
       const { analyzeImpact } = await import('@featuremap/pipeline');
-      const result = analyzeImpact(process.cwd());
+      const result = await analyzeImpact(process.cwd(), { range });
       console.log(`分支：${result.currentBranch ?? '未知'}（基准：${result.baseBranch ?? '未知'}）`);
       console.log('');
       console.log(`变更文件（${result.changedFiles.length}）：`);
@@ -160,18 +161,44 @@ program
         console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
       }
       if (result.changedFiles.length === 0) {
-        console.log('  （未检测到未提交或分支变更）');
+        console.log('  （未检测到该区间的变更）');
       }
       console.log('');
       console.log(`受影响功能（${result.affectedFeatures.length}）：`);
+      let lastSeverity: string | undefined;
       for (const f of result.affectedFeatures) {
-        console.log(`  ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
-        for (const reason of f.reasons) console.log(`    · ${reason}`);
-        if (f.tests.length > 0) console.log(`    相关测试：${f.tests.join(', ')}`);
-        if (f.documents.length > 0) console.log(`    相关文档：${f.documents.join(', ')}`);
+        if (f.severity !== lastSeverity) {
+          console.log(`  ${f.severity}`);
+          lastSeverity = f.severity;
+        }
+        console.log(`    ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
+        for (const reason of f.reasons) console.log(`      · ${reason}`);
+        if (f.tests.length > 0) console.log(`      相关测试：${f.tests.join(', ')}`);
+        if (f.documents.length > 0) console.log(`      相关文档：${f.documents.join(', ')}`);
       }
       if (result.affectedFeatures.length === 0) {
         console.log('  （没有达到可展示置信度的影响）');
+      }
+      if (result.sharedInfrastructure.length > 0) {
+        console.log('');
+        console.log('共享基础设施（不归属任何单一功能）：');
+        for (const s of result.sharedInfrastructure) {
+          console.log(`  ${s.path} —— ${s.reason}`);
+        }
+      }
+      if (result.suppressedUncertainty.length > 0) {
+        console.log('');
+        console.log('未达展示阈值的低置信度影响（显式呈现不确定性）：');
+        for (const u of result.suppressedUncertainty) {
+          console.log(`  ${u.featureName ?? u.featureId} —— 置信度 ${u.confidence}（${u.reason}）`);
+        }
+      }
+      if (result.recommendedTests.length > 0) {
+        console.log('');
+        console.log('推荐测试（仅建议，非完整影响断言）：');
+        for (const t of result.recommendedTests) {
+          console.log(`  ${t.status === 'recommended' ? '✓' : '?'} ${t.path}`);
+        }
       }
       if (result.potentiallyStaleDocuments.length > 0) {
         console.log('');
@@ -332,6 +359,43 @@ program
         for (const c of result.componentUsage) {
           console.log(`  ${c.sourceId} → ${c.targetId}`);
         }
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('git')
+  .description('Git 变更模型子命令（Phase 3，ADR-0004）。')
+  .command('inspect')
+  .description('查看某提交的变更模型：元信息、变更文件、变更符号（diff hunk 行区间 ∩ 符号区间）。')
+  .argument('<commit-ish>', '提交引用（如 HEAD、HEAD~2、完整 SHA）')
+  .action(async (commitIsh: string) => {
+    try {
+      const { inspectCommit } = await import('@featuremap/pipeline');
+      const r = await inspectCommit(process.cwd(), commitIsh);
+      console.log(`提交：${r.sha}`);
+      console.log(`作者：${r.author ?? '未知'} <${r.email ?? ''}>`);
+      console.log(`时间：${r.committedAt ?? '未知'}`);
+      if (r.message) console.log(`信息：${r.message}`);
+      if (r.approximate) {
+        console.log('⚠ 该提交不是当前 HEAD：变更符号按最新扫描的行号匹配，可能已漂移（approximate）。');
+      }
+      console.log('');
+      console.log(`变更文件（${r.changedFiles.length}）：`);
+      for (const f of r.changedFiles) {
+        console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
+      }
+      console.log('');
+      console.log(`变更符号（${r.changedSymbols.length}）：`);
+      for (const s of r.changedSymbols) {
+        const name = s.symbolId.slice(s.symbolId.lastIndexOf(':') + 1);
+        console.log(`  ${name}  [${s.kind}] ${s.path}:${s.startLine}-${s.endLine}（行 ${s.lines.join(', ')}）`);
+      }
+      if (r.changedSymbols.length === 0) {
+        console.log('  （该提交的变更行未命中已扫描的符号区间；可能仅改动导入/导出或数据行）');
       }
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));

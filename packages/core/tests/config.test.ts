@@ -34,6 +34,8 @@ describe('defaultConfig', () => {
     expect(config.scan.ignore).toContain('target/**');
     expect(config.analyzers.enabled).toContain('typescript');
     expect(config.analyzers.enabled).toContain('markdown');
+    // Phase 3 git window (Milestone 10).
+    expect(config.git.logLimit).toBe(200);
   });
 });
 
@@ -67,6 +69,13 @@ describe('validateConfig', () => {
       impact: { minimumConfidence: 0.3 },
     });
     expect(issues.some((i) => i.level === 'error' && i.code === 'INVALID_CONFIG')).toBe(true);
+  });
+
+  it('parses git.logLimit and rejects out-of-range values', () => {
+    const ok = validateConfig({ project: { name: 'demo' }, git: { logLimit: 500 } });
+    expect(ok.config?.git.logLimit).toBe(500);
+    const bad = validateConfig({ project: { name: 'demo' }, git: { logLimit: 0 } });
+    expect(bad.issues.some((i) => i.level === 'error' && i.code === 'INVALID_CONFIG')).toBe(true);
   });
 
   it('rejects a non-mapping configuration', () => {

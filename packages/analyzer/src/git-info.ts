@@ -40,6 +40,9 @@ export interface GitInfo {
 const WORKING_TREE = 'WORKING_TREE';
 const BRANCH_DIFF = 'BRANCH_DIFF';
 
+/** Default commit-log window when no config value is supplied. */
+export const DEFAULT_GIT_LOG_LIMIT = 200;
+
 function mapStatus(code: string): CommitFileChange['changeType'] | undefined {
   switch (code) {
     case 'A':
@@ -62,8 +65,14 @@ function toPosix(p: string): string {
 /**
  * Collect Git facts: current branch, recent commits with per-commit
  * file changes, and working-tree changes.
+ *
+ * @param logLimit commit-log window (config `git.logLimit`, default 200)
  */
-export async function collectGitInfo(repoRoot: string, baseBranch: string): Promise<GitInfo> {
+export async function collectGitInfo(
+  repoRoot: string,
+  baseBranch: string,
+  logLimit = DEFAULT_GIT_LOG_LIMIT,
+): Promise<GitInfo> {
   const info: GitInfo = {
     available: false,
     commits: [],
@@ -108,7 +117,7 @@ export async function collectGitInfo(repoRoot: string, baseBranch: string): Prom
     const log = await git(
       'log',
       '-n',
-      '50',
+      String(logLimit),
       '--name-status',
       '--pretty=format:%H%x1f%an%x1f%ae%x1f%ci%x1f%s%x1e',
     );

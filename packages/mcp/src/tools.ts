@@ -17,21 +17,24 @@ export interface ToolContext {
   dbPath?: string;
 }
 
-function withDb<T>(ctx: ToolContext, fn: (db: ReturnType<typeof openDatabase>['db']) => T): T {
+async function withDb<T>(
+  ctx: ToolContext,
+  fn: (db: ReturnType<typeof openDatabase>['db']) => T | Promise<T>,
+): Promise<T> {
   const { db, sqlite } = openDatabase(ctx.dbPath ?? defaultDatabasePath(ctx.repoRoot));
   try {
-    return fn(db);
+    return await fn(db);
   } finally {
     sqlite.close();
   }
 }
 
 /** list_features — discover available product capabilities. */
-export function listFeatures(
+export async function listFeatures(
   ctx: ToolContext,
   input: { query?: string; changedOnly?: boolean } = {},
-): unknown {
-  return withDb(ctx, (db) => {
+): Promise<unknown> {
+  return withDb(ctx, async (db) => {
     let rows = db.select().from(schema.features).all();
     if (input.query) {
       const q = input.query.toLowerCase();
@@ -43,7 +46,7 @@ export function listFeatures(
       );
     }
     if (input.changedOnly) {
-      const impact = analyzeImpact(ctx.repoRoot, ctx.dbPath);
+      const impact = await analyzeImpact(ctx.repoRoot, { dbPath: ctx.dbPath });
       const changed = new Set(impact.affectedFeatures.map((f) => f.featureId));
       rows = rows.filter((f) => changed.has(f.id));
     }
@@ -58,7 +61,7 @@ export function listFeatures(
 }
 
 /** get_feature — concise feature metadata. */
-export function getFeature(ctx: ToolContext, input: { featureId: string }): unknown {
+export async function getFeature(ctx: ToolContext, input: { featureId: string }): Promise<unknown> {
   return withDb(ctx, (db) => {
     const f = db
       .select()
@@ -84,17 +87,17 @@ const ALL_SECTIONS = ['flow', 'code', 'apis', 'data', 'tests', 'documents', 'ins
  * get_feature_context — primary agent context tool (MCP_SPEC §3).
  * Output is bounded by maxItemsPerSection and ranked by evidence strength.
  */
-export function getFeatureContext(
+export async function getFeatureContext(
   ctx: ToolContext,
   input: {
     featureId: string;
     include?: Array<(typeof ALL_SECTIONS)[number]>;
     maxItemsPerSection?: number;
   },
-): unknown {
+): Promise<unknown> {
   const include = input.include ?? [...ALL_SECTIONS];
   const max = input.maxItemsPerSection ?? 20;
-  return withDb(ctx, (db) => {
+  return withDb(ctx, async (db) => {
     const f = db
       .select()
       .from(schema.features)
@@ -170,7 +173,7 @@ export function getFeatureContext(
 
     let changes: Array<{ path: string; changeType: string }> = [];
     if (include.includes('changes')) {
-      const impact = analyzeImpact(ctx.repoRoot, ctx.dbPath);
+      const impact = await analyzeImpact(ctx.repoRoot, { dbPath: ctx.dbPath });
       const affected = impact.affectedFeatures.find((af) => af.featureId === f.id);
       changes = affected
         ? impact.changedFiles.filter((c) => changedTouchesFeature(affected.reasons, c.path)).slice(0, max)
@@ -203,11 +206,12 @@ function changedTouchesFeature(reasons: string[], changedPath: string): boolean 
 }
 
 /** get_affected_features — analyze the current Git diff (MCP_SPEC §3). */
-export function getAffectedFeatures(
+export async function getAffectedFeatures(
   ctx: ToolContext,
   input: { base?: string; minimumConfidence?: number } = {},
-): unknown {
-  const impact = analyzeImpact(ctx.repoRoot, ctx.dbPath);
+): Promise<unknown> {
+  // `base` (if given) doubles as a commit-range change source (ADR-0004 §1).
+  const impact = await analyzeImpact(ctx.repoRoot, { range: input.base, dbPath: ctx.dbPath });
   const min = input.minimumConfidence ?? 0.5;
   return impact.affectedFeatures
     .filter((f) => f.confidence >= min && isSurfaceable(f.confidence))
@@ -221,10 +225,10 @@ export function getAffectedFeatures(
 }
 
 /** get_applicable_instructions — scoped repository rules (MCP_SPEC §3). */
-export function getApplicableInstructions(
+export async function getApplicableInstructions(
   ctx: ToolContext,
   input: { featureId: string },
-): unknown {
+): Promise<unknown> {
   return withDb(ctx, (db) => {
     const rows = db
       .select()

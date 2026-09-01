@@ -8,7 +8,7 @@
  * - a changed evidence fingerprint supersedes the verdict (drift)
  * - explain renders the full evidence chain behind a score
  */
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,21 @@ function fixtureDb(): string {
     tempDirs.push(sharedDir);
   }
   return join(sharedDir, 'featuremap.db');
+}
+
+/**
+ * Writable copy of fixture 01. The drift test mutates source files; a
+ * copy (without the .featuremap cache) keeps it parallel-safe instead
+ * of modifying the shared fixture tree.
+ */
+function copyFixture01(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'featuremap-review-'));
+  tempDirs.push(dir);
+  cpSync(join(FIXTURES_ROOT, '01-simple-login'), dir, {
+    recursive: true,
+    filter: (src) => !src.includes('.featuremap'),
+  });
+  return dir;
 }
 
 afterAll(() => {
@@ -129,22 +144,25 @@ describe('review workflow on fixture 01', () => {
   });
 
   it('a changed evidence fingerprint supersedes the verdict (drift)', async () => {
-    // Fresh store.
+    // Fresh store + writable fixture copy (parallel-safe).
     const dbPath = tempDb();
-    const root = join(FIXTURES_ROOT, '01-simple-login');
+    const root = copyFixture01();
     await runScan(root, { dbPath });
     setVerdict(root, 'login', 'src/shared/logger.ts', 'rejected', dbPath);
 
-    // Simulate code change: drop the logger import from auth-service so
-    // the rejected file's evidence chain changes shape.
+    // Simulate code change: drop every logger import (auth-service and
+    // user-repository both reference it) so the rejected file's evidence
+    // chain changes shape completely. Fixture files use CRLF on Windows,
+    // so the match must tolerate both line endings.
     const authServicePath = join(root, 'src/auth/auth-service.ts');
-    const original = readFileSync(authServicePath, 'utf8');
+    const userRepositoryPath = join(root, 'src/auth/user-repository.ts');
+    const originalAuth = readFileSync(authServicePath, 'utf8');
+    const originalUser = readFileSync(userRepositoryPath, 'utf8');
+    const stripLoggerImport = (src: string): string =>
+      src.replace(/import \{ logger \} from '\.\.\/shared\/logger';\r?\n/g, '');
     try {
-      writeFileSync(
-        authServicePath,
-        original.replace("import { logger } from '../shared/logger';\n", '').replace("    logger.info('login attempt');\n", ''),
-        'utf8',
-      );
+      writeFileSync(authServicePath, stripLoggerImport(originalAuth), 'utf8');
+      writeFileSync(userRepositoryPath, stripLoggerImport(originalUser), 'utf8');
       await runScan(root, { dbPath });
 
       const candidates = listCandidates(root, 'login', dbPath);
@@ -154,7 +172,8 @@ describe('review workflow on fixture 01', () => {
       // suppressed forever.
       expect(loggerFile?.status).toBe('superseded');
     } finally {
-      writeFileSync(authServicePath, original, 'utf8');
+      writeFileSync(authServicePath, originalAuth, 'utf8');
+      writeFileSync(userRepositoryPath, originalUser, 'utf8');
     }
   });
 });

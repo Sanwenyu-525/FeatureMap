@@ -41,28 +41,28 @@ afterAll(() => {
 });
 
 describe('list_features', () => {
-  it('lists discovered features with confidence', () => {
-    const features = listFeatures(ctx) as Array<{ id: string; pattern: string; confidence: number }>;
+  it('lists discovered features with confidence', async () => {
+    const features = (await listFeatures(ctx)) as Array<{ id: string; pattern: string; confidence: number }>;
     const ids = features.map((f) => f.id);
     expect(ids).toContain('feature:login');
     expect(ids).toContain('feature:users');
   });
 
-  it('filters by query', () => {
-    const features = listFeatures(ctx, { query: 'login' }) as Array<{ id: string }>;
+  it('filters by query', async () => {
+    const features = (await listFeatures(ctx, { query: 'login' })) as Array<{ id: string }>;
     expect(features).toHaveLength(1);
     expect(features[0]?.id).toBe('feature:login');
   });
 
-  it('supports changedOnly filtering without error', () => {
-    const features = listFeatures(ctx, { changedOnly: true }) as unknown[];
+  it('supports changedOnly filtering without error', async () => {
+    const features = (await listFeatures(ctx, { changedOnly: true })) as unknown[];
     expect(Array.isArray(features)).toBe(true);
   });
 });
 
 describe('get_feature', () => {
-  it('returns metadata and derived health', () => {
-    const feature = getFeature(ctx, { featureId: 'feature:login' }) as {
+  it('returns metadata and derived health', async () => {
+    const feature = (await getFeature(ctx, { featureId: 'feature:login' })) as {
       name: string;
       health?: Record<string, string>;
     };
@@ -70,18 +70,18 @@ describe('get_feature', () => {
     expect(feature.health?.['implementation']).toBe('complete');
   });
 
-  it('returns FEATURE_NOT_FOUND for unknown ids', () => {
-    const result = getFeature(ctx, { featureId: 'nope' }) as { error?: { code: string } };
+  it('returns FEATURE_NOT_FOUND for unknown ids', async () => {
+    const result = (await getFeature(ctx, { featureId: 'nope' })) as { error?: { code: string } };
     expect(result.error?.code).toBe('FEATURE_NOT_FOUND');
   });
 });
 
 describe('get_feature_context', () => {
-  it('returns bounded, ranked context sections', () => {
-    const context = getFeatureContext(ctx, {
+  it('returns bounded, ranked context sections', async () => {
+    const context = (await getFeatureContext(ctx, {
       featureId: 'feature:login',
       maxItemsPerSection: 5,
-    }) as {
+    })) as {
       feature: { id: string };
       sections: { code: unknown[]; apis: Array<{ name: string }>; instructions: unknown[] };
       evidenceSummary: unknown[];
@@ -93,25 +93,25 @@ describe('get_feature_context', () => {
     expect(context.sections.instructions).toEqual([]);
   });
 
-  it('honours include selection', () => {
-    const context = getFeatureContext(ctx, {
+  it('honours include selection', async () => {
+    const context = (await getFeatureContext(ctx, {
       featureId: 'feature:login',
       include: ['apis'],
-    }) as { sections: { apis: unknown[]; code: unknown[]; documents: unknown[] } };
+    })) as { sections: { apis: unknown[]; code: unknown[]; documents: unknown[] } };
     expect(context.sections.apis.length).toBeGreaterThan(0);
     expect(context.sections.code).toEqual([]);
     expect(context.sections.documents).toEqual([]);
   });
 
-  it('returns FEATURE_NOT_FOUND for unknown ids', () => {
-    const result = getFeatureContext(ctx, { featureId: 'nope' }) as { error?: { code: string } };
+  it('returns FEATURE_NOT_FOUND for unknown ids', async () => {
+    const result = (await getFeatureContext(ctx, { featureId: 'nope' })) as { error?: { code: string } };
     expect(result.error?.code).toBe('FEATURE_NOT_FOUND');
   });
 });
 
 describe('get_affected_features', () => {
-  it('returns an array ranked by confidence', () => {
-    const affected = getAffectedFeatures(ctx) as Array<{ confidence: number }>;
+  it('returns an array ranked by confidence', async () => {
+    const affected = (await getAffectedFeatures(ctx)) as Array<{ confidence: number }>;
     expect(Array.isArray(affected)).toBe(true);
     const confidences = affected.map((f) => f.confidence);
     expect([...confidences].sort((a, b) => b - a)).toEqual(confidences);
@@ -119,8 +119,8 @@ describe('get_affected_features', () => {
 });
 
 describe('get_applicable_instructions', () => {
-  it('returns empty list until instruction extraction exists (no invention)', () => {
-    const instructions = getApplicableInstructions(ctx, { featureId: 'feature:login' }) as unknown[];
+  it('returns empty list until instruction extraction exists (no invention)', async () => {
+    const instructions = await getApplicableInstructions(ctx, { featureId: 'feature:login' });
     expect(instructions).toEqual([]);
   });
 });
