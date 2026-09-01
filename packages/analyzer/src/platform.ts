@@ -9,13 +9,14 @@ import type {
   AnalyzerDiagnostic,
   AnalyzerPlugin,
   AnalyzeContext,
+  AnalysisCache,
   CodeAssetInput,
   DetectionResult,
   EvidenceInput,
   ScannedFile,
 } from '@featuremap/plugin-sdk';
 
-export type { AnalyzerDiagnostic, CodeAssetInput, EvidenceInput, ScannedFile };
+export type { AnalyzerDiagnostic, CodeAssetInput, EvidenceInput, ScannedFile, AnalysisCache };
 
 export interface PlatformAsset extends CodeAssetInput {
   id: string;
@@ -34,6 +35,8 @@ export interface AnalyzerRunSummary {
   assetCount: number;
   evidenceCount: number;
   diagnostics: AnalyzerDiagnostic[];
+  /** Optional per-analyzer counters (e.g. cache hits/misses, Milestone 9). */
+  stats: Record<string, number>;
 }
 
 export interface PlatformOutput {
@@ -108,6 +111,7 @@ export async function runAnalyzers(
       assetCount: 0,
       evidenceCount: 0,
       diagnostics: [],
+      stats: {},
     };
     try {
       const detection: DetectionResult = await plugin.detect(context);
@@ -125,6 +129,7 @@ export async function runAnalyzers(
       run.assetCount = result.assets.length;
       run.evidenceCount = result.evidence.length;
       run.diagnostics = result.diagnostics;
+      run.stats = result.stats ?? {};
       if (result.diagnostics.some((d) => d.level === 'error')) run.status = 'degraded';
 
       for (const asset of result.assets) {

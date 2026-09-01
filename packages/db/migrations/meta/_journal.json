@@ -22,6 +22,13 @@
       "when": 1788245252416,
       "tag": "0002_feature_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788248354904,
+      "tag": "0003_analysis_cache",
+      "breakpoints": true
     }
   ]
 }

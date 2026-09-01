@@ -23,6 +23,7 @@ import type {
   DetectContext,
   DetectionResult,
   EvidenceInput,
+  ScannedFile,
 } from '@featuremap/plugin-sdk';
 import { emptyResult } from '@featuremap/plugin-sdk';
 
@@ -191,9 +192,18 @@ function enclosingName(node: ts.Node): string | undefined {
 }
 
 interface FileAnalysis {
-  sourceFile: ts.SourceFile;
+  /** Absent for cache hits — cached evidence replaces AST traversal. */
+  sourceFile?: ts.SourceFile;
   symbols: SymbolInfo[];
   namedImports: NamedImport[];
+}
+
+/** Per-file payload stored in the analysis cache (Milestone 9). */
+interface CachedFileAnalysis {
+  symbols: SymbolInfo[];
+  namedImports: NamedImport[];
+  /** IMPORTS edges plus collectGraphEvidence output, in stable order. */
+  evidence: Evidence[];
 }
 
 /**
@@ -348,7 +358,7 @@ function collectGraphEvidence(
     ts.forEachChild(node, visit);
     if (pushed) scope.pop();
   };
-  ts.forEachChild(analysis.sourceFile, visit);
+  ts.forEachChild(analysis.sourceFile!, visit);
 
   return evidence;
 }
@@ -366,12 +376,37 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
     const result = emptyResult();
     const scriptFiles = context.files.filter((f) => isScriptFile(f.path));
     const fileSet = new Set(context.files.map((f) => f.path));
+    const cache = context.cache;
+    const cacheKeyOf = (file: ScannedFile): string =>
+      `${typescriptAnalyzer.id}:${typescriptAnalyzer.version}:${file.hash}:${context.fileSetKey ?? ''}`;
+    let cacheHits = 0;
+    let cacheMisses = 0;
 
-    // Pass 1: parse and collect per-file symbol registries so calls and
-    // JSX usage can resolve against any scanned file.
-    const analyses: Array<{ path: string; analysis: FileAnalysis }> = [];
+    // Pass 1: parse (or restore from cache) and collect per-file symbol
+    // registries so calls and JSX usage can resolve against any scanned
+    // file. Cache hits skip both the file read and the parse.
+    const analyses: Array<{
+      path: string;
+      analysis: FileAnalysis;
+      cacheKey?: string;
+      cached?: CachedFileAnalysis;
+    }> = [];
     const registries = new Map<string, Map<string, SymbolInfo>>();
     for (const file of scriptFiles) {
+      const key = cacheKeyOf(file);
+      const cached = cache?.get(key) as CachedFileAnalysis | undefined;
+      if (cached) {
+        cacheHits += 1;
+        analyses.push({
+          path: file.path,
+          analysis: { symbols: cached.symbols, namedImports: cached.namedImports },
+          cacheKey: key,
+          cached,
+        });
+        registries.set(file.path, new Map(cached.symbols.map((s) => [s.name, s])));
+        continue;
+      }
+      cacheMisses += 1;
       const content = context.readFile(file.path);
       if (content === undefined) {
         result.diagnostics.push({
@@ -389,12 +424,13 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
         symbols,
         namedImports: extractNamedImports(sourceFile, file.path, fileSet),
       };
-      analyses.push({ path: file.path, analysis });
+      analyses.push({ path: file.path, analysis, cacheKey: key });
       registries.set(file.path, new Map(symbols.map((s) => [s.name, s])));
     }
 
-    // Pass 2: assets and graph evidence.
-    for (const { path: filePath, analysis } of analyses) {
+    // Pass 2: assets and graph evidence. Cache hits replay their stored
+    // evidence (identical by construction) instead of walking the AST.
+    for (const { path: filePath, analysis, cacheKey, cached } of analyses) {
       const tsx = filePath.endsWith('.tsx') || filePath.endsWith('.jsx');
       for (const sym of analysis.symbols) {
         const asset: CodeAssetInput = {
@@ -418,8 +454,14 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
         }
       }
 
+      if (cached) {
+        result.evidence.push(...cached.evidence);
+        continue;
+      }
+
       // Imports resolved to repository files
-      for (const statement of analysis.sourceFile.statements) {
+      const importEvidence: Evidence[] = [];
+      for (const statement of analysis.sourceFile!.statements) {
         let specifier: string | undefined;
         if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
           specifier = statement.moduleSpecifier.text;
@@ -433,7 +475,7 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
         if (!specifier) continue;
         const resolved = resolveSpecifier(filePath, specifier, fileSet);
         if (resolved) {
-          result.evidence.push({
+          importEvidence.push({
             sourceType: 'file',
             sourceId: filePath,
             relationType: 'IMPORTS',
@@ -445,8 +487,18 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
         }
       }
 
-      result.evidence.push(...collectGraphEvidence(filePath, analysis, registries));
+      const graphEvidence = collectGraphEvidence(filePath, analysis, registries);
+      result.evidence.push(...importEvidence, ...graphEvidence);
+      if (cache && cacheKey) {
+        cache.put(cacheKey, {
+          symbols: analysis.symbols,
+          namedImports: analysis.namedImports,
+          evidence: [...importEvidence, ...graphEvidence],
+        } satisfies CachedFileAnalysis);
+      }
     }
+
+    if (cache) result.stats = { cacheHits, cacheMisses };
 
     return result;
   },
