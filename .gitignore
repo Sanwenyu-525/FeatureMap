@@ -9,7 +9,7 @@ playwright-report/
 
 # FeatureMap runtime/cache directory
 .featuremap/
-featuremap.yaml
+/featuremap.yaml
 
 # Environment and secrets (see SECURITY.md)
 .env

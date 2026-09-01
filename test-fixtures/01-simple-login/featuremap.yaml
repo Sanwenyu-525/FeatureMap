@@ -1,0 +1,13 @@
+project:
+  name: simple-login
+
+scan:
+  ignore:
+    - .env
+    - .env.*
+
+features:
+  anchors:
+    - feature: login
+      type: file
+      target: src/auth/login.ts

@@ -1,0 +1,10 @@
+project:
+  name: react-express-basic
+
+scan:
+  baseBranch: main
+  ignore:
+    - node_modules/**
+    - dist/**
+    - .env
+    - .env.*

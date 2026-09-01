@@ -1,0 +1,31 @@
+feature: billing
+anchors:
+  - type: file
+    target: src/billing/billing-handler.ts
+expected:
+  - billingHandler
+  - Billing.run
+  - InvoiceService.createInvoice
+  - InvoiceRepository.save
+notExpected:
+  - log
+  - config
+  - HttpClient.post
+  - Notification.dispatch
+  - NotificationService.send
+  - NotificationRepository.record
+  - notificationHandler
+expectedFiles:
+  - src/billing/billing-handler.ts
+  - src/billing/billing.ts
+  - src/billing/invoice-service.ts
+  - src/billing/invoice-repository.ts
+notExpectedFiles:
+  - src/shared/logger.ts
+  - src/shared/config.ts
+  - src/shared/http-client.ts
+  - src/notification/notification.ts
+  - src/notification/notification-handler.ts
+  - src/notification/notification-service.ts
+  - src/notification/notification-repository.ts
+  - src/server.ts

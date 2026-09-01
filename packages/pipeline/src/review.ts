@@ -69,7 +69,7 @@ function resolveFeatureId(db: ReturnType<typeof openDatabase>['db'], nameOrId: s
   return fid;
 }
 
-/** Exact targetId first, then a unique bare-symbol-name match. */
+/** Exact targetId first, then a unique bare-symbol-name match, then a unique qualified name (Class.member) resolved through CONTAINS evidence. */
 function findCandidateRow(
   db: ReturnType<typeof openDatabase>['db'],
   featureId: string,
@@ -92,6 +92,35 @@ function findCandidateRow(
       `Target "${target}" matches several candidates; use the full id (${byBareName.map((r) => r.targetId).join(', ')}).`,
     );
   }
+
+  // Qualified symbol name (acceptance §5 step 6: `explain login
+  // UserRepository.findByEmail`). Resolve Class.member through the
+  // CONTAINS evidence: the candidate's symbol id must be the target of
+  // a CONTAINS edge whose source ends with :<Class>.
+  if (target.includes('.')) {
+    const dot = target.lastIndexOf('.');
+    const className = target.slice(0, dot);
+    const memberName = target.slice(dot + 1);
+    const memberMatches = rows.filter(
+      (r) => r.targetType === 'symbol' && r.targetId.endsWith(`:${memberName}`),
+    );
+    const qualified = memberMatches.filter((r) => {
+      const contains = db
+        .select()
+        .from(schema.evidence)
+        .where(and(eq(schema.evidence.relationType, 'CONTAINS'), eq(schema.evidence.targetId, `symbol:${r.targetId}`)))
+        .all();
+      return contains.some((e) => e.sourceId.endsWith(`:${className}`));
+    });
+    if (qualified.length === 1) return qualified[0]!;
+    if (qualified.length > 1) {
+      throw new ReviewError(
+        'AMBIGUOUS_TARGET',
+        `Target "${target}" matches several candidates; use the full id (${qualified.map((r) => r.targetId).join(', ')}).`,
+      );
+    }
+  }
+
   throw new ReviewError(
     'CANDIDATE_NOT_FOUND',
     `No candidate "${target}" for ${featureId}. Run "featuremap scan ${slugify(featureId.replace(/^feature:/, ''))}" to list candidates.`,

@@ -19,6 +19,7 @@ import {
   markdownAnalyzer,
   nestjsAnalyzer,
   prismaAnalyzer,
+  resolveSpecifier,
   runAnalyzers,
   typescriptAnalyzer,
 } from '../src/index.js';
@@ -84,6 +85,66 @@ describe('typescript analyzer', () => {
     expect(evidenceOf(imports)).toContain(
       'src/auth/login.js IMPORTS src/auth/user.js (1)',
     );
+  });
+});
+
+describe('resolveSpecifier (acceptance §1 Resolution blockers)', () => {
+  const fileSet = new Set([
+    'src/shared/index.ts',
+    'src/shared/logger.ts',
+    'src/auth/login.ts',
+    'src/auth/user.js',
+  ]);
+
+  it('resolves directory imports to index files', () => {
+    expect(resolveSpecifier('src/app.ts', './shared', fileSet)).toBe('src/shared/index.ts');
+  });
+
+  it('resolves extensionless and NodeNext .js spellings', () => {
+    expect(resolveSpecifier('src/app.ts', './shared/logger', fileSet)).toBe('src/shared/logger.ts');
+    expect(resolveSpecifier('src/app.ts', './shared/logger.js', fileSet)).toBe('src/shared/logger.ts');
+  });
+
+  it('keeps explicit extensions and rejects unresolved specifiers', () => {
+    expect(resolveSpecifier('src/app.ts', './auth/user.js', fileSet)).toBe('src/auth/user.js');
+    expect(resolveSpecifier('src/app.ts', './missing', fileSet)).toBeUndefined();
+  });
+
+  it('resolves tsconfig paths aliases', () => {
+    expect(
+      resolveSpecifier('src/app.ts', '@/shared/logger', fileSet, {
+        baseUrl: '.',
+        paths: { '@/*': ['src/*'] },
+      }),
+    ).toBe('src/shared/logger.ts');
+  });
+
+  it('resolves tsconfig paths aliases written with a leading ./', () => {
+    // Real-repo spelling (dify web): `"@/*": ["./*"]` with no baseUrl,
+    // where `@` maps to the repository root itself.
+    expect(
+      resolveSpecifier('app/app.ts', '@/src/shared/logger', fileSet, {
+        paths: { '@/*': ['./*'] },
+      }),
+    ).toBe('src/shared/logger.ts');
+  });
+
+  it('does not resolve non-script imports into the code graph (release-gate P2)', () => {
+    // JSON/CSS data imports (`package.json`, `timezone.json`, styles)
+    // must not become IMPORTS edges — they were surfacing as candidate
+    // noise on real repositories (dify scan).
+    const withData = new Set([
+      ...fileSet,
+      'src/package.json',
+      'src/data.json',
+      'src/styles.css',
+      'src/meta.json',
+    ]);
+    expect(resolveSpecifier('src/app.ts', './package.json', withData)).toBeUndefined();
+    expect(resolveSpecifier('src/app.ts', './data.json', withData)).toBeUndefined();
+    expect(resolveSpecifier('src/app.ts', './styles.css', withData)).toBeUndefined();
+    // Script imports keep resolving as before.
+    expect(resolveSpecifier('src/app.ts', './auth/login', withData)).toBe('src/auth/login.ts');
   });
 });
 

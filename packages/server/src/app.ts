@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { runScan, analyzeImpact, setVerdict, ReviewError } from '@featuremap/pipeline';
+import { runScan, analyzeImpact, setVerdict, ReviewError, featureTimeline } from '@featuremap/pipeline';
 import type {
   AnalyzerStatusDto,
   CandidateDto,
@@ -257,14 +257,27 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     return { featureId: id, evidence };
   });
 
-  app.get('/api/changes', async (_req, reply) => {
+  /** Feature change timeline (Milestone 14 / ADR-0004 §6), derived at query time. */
+  app.get('/api/features/:id/changes', async (req, reply) => {
+    const id = decodeURIComponent((req.params as { id: string }).id);
+    try {
+      return featureTimeline(options.repoRoot, id, dbPath);
+    } catch {
+      return fail(reply, 'FEATURE_NOT_FOUND', `Feature "${id}" does not exist.`, 404);
+    }
+  });
+
+  app.get('/api/changes', async (req, reply) => {
     const project = getProject(db);
     if (!project) {
       return fail(reply, 'PROJECT_NOT_INITIALIZED', 'Run "featuremap init" and "featuremap scan" first.', 404);
     }
     // Impact traversal over evidence-backed relations only
     // (AGENTS.md §9); low-confidence hits stay unsurfaced.
-    const impact = analyzeImpact(options.repoRoot, dbPath);
+    // Optional `range` query turns this into a commit-range analysis
+    // (ADR-0004 §1): ?range=main..HEAD
+    const query = req.query as { range?: string };
+    const impact = await analyzeImpact(options.repoRoot, { range: query.range, dbPath });
     const body: ChangesResponse = {
       currentBranch: impact.currentBranch,
       baseBranch: impact.baseBranch ?? project.baseBranch,
@@ -273,8 +286,12 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
         featureId: f.featureId,
         featureName: f.featureName,
         confidence: f.confidence,
+        severity: f.severity,
         reasons: f.reasons,
       })),
+      sharedInfrastructure: impact.sharedInfrastructure,
+      suppressedUncertainty: impact.suppressedUncertainty,
+      recommendedTests: impact.recommendedTests,
       potentiallyStaleDocuments: impact.potentiallyStaleDocuments,
     };
     return body;

@@ -52,12 +52,15 @@ export interface MappingMetrics {
   pending: boolean;
 }
 
-export function loadGroundTruth(fixtureRoot: string): GroundTruth {
-  const parsed = parseYaml(readFileSync(join(fixtureRoot, 'ground-truth.yaml'), 'utf8')) as
+export function loadGroundTruth(
+  fixtureRoot: string,
+  fileName = 'ground-truth.yaml',
+): GroundTruth {
+  const parsed = parseYaml(readFileSync(join(fixtureRoot, fileName), 'utf8')) as
     | Partial<GroundTruth>
     | null;
   if (!parsed || typeof parsed.feature !== 'string' || parsed.feature === '') {
-    throw new Error(`${join(fixtureRoot, 'ground-truth.yaml')}: "feature" is required`);
+    throw new Error(`${join(fixtureRoot, fileName)}: "feature" is required`);
   }
   return {
     feature: parsed.feature,

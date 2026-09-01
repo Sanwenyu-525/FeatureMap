@@ -29,3 +29,5 @@ export {
   gitAnalyzer,
   cliAnalyzer,
 };
+export { loadModuleResolution, resolveSpecifier, symbolId, typescriptCacheKeyOf } from './typescript.js';
+export type { TsconfigModuleResolution } from './typescript.js';

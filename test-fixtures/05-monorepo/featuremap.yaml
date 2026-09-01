@@ -1,0 +1,13 @@
+project:
+  name: monorepo
+
+scan:
+  ignore:
+    - .env
+    - .env.*
+
+features:
+  anchors:
+    - feature: login
+      type: file
+      target: apps/web/src/login/page.tsx

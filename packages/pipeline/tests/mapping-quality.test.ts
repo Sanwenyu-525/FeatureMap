@@ -224,38 +224,201 @@ describe('mapping-quality fixtures (current-engine regression baseline)', () => 
     expect(byId.get('src/components/Button.tsx:Button')).toMatchObject({ relation: 'DEPENDS_ON' });
   });
 
-  it('03-nextjs-auth: relative chain resolves, tsconfig path aliases do not', async () => {
+  it('03-nextjs-auth: tsconfig path aliases resolve end to end', async () => {
     const { scan, metrics } = await measure('03-nextjs-auth');
 
     expect(metrics.featureId).toBe('feature:login');
 
-    // Only the relative-import chain from the custom server resolves.
+    // Acceptance §1 Blocker: `@/*` aliases resolve. The file-level
+    // discovery engine reaches the whole API chain through aliases
+    // (route → lib/auth → services/auth → repositories/user).
     expect(metrics.candidates).toEqual(
-      expect.arrayContaining(['src/server.ts', 'src/app/api/login/route.ts']),
-    );
-
-    // Known current-engine gap: `@/*` aliases are unresolved
-    // (acceptance §1 Blocker "tsconfig paths can be resolved").
-    expect(metrics.falseNegatives).toEqual(
       expect.arrayContaining([
         'src/lib/auth.ts',
         'src/services/auth.ts',
         'src/repositories/user.ts',
+      ]),
+    );
+    // File-level recall stays partial: the discovery engine has no file
+    // anchors, so the UI-side files remain unreachable (same gap as
+    // fixture 02). The candidate engine below closes it at symbol level.
+    expect(metrics.falseNegatives).toEqual(
+      expect.arrayContaining([
         'src/app/login/page.tsx',
+        'src/app/login/LoginForm.tsx',
+        'src/hooks/useLogin.ts',
       ]),
     );
     expect(metrics.recall).toBeLessThan(1);
-    expect(metrics.precision).toBe(1); // the two resolved files are both expected
 
-    // Symbol level: same alias gap — only the server-side chain and
-    // the anchored page itself are candidates.
+    // Shared infra imported through aliases is still down-weighted as
+    // a dependency, never ownership: it stays out of the expected set.
+    // (Button is a UI-side file the discovery engine never reaches; it
+    // appears among symbol-level candidates instead — see below.)
+    expect(metrics.falsePositives).toEqual(['src/lib/logger.ts']);
+
+    // Symbol level: the whole alias chain resolves, including methods.
     const symbolMetrics = measureSymbolMapping(scan, loadGroundTruth(fixtureRoot('03-nextjs-auth')));
     expect(symbolMetrics.pending).toBe(false);
     expect(symbolMetrics.truePositives).toEqual(
-      expect.arrayContaining(['loginRoute', 'LoginPage']),
+      expect.arrayContaining([
+        'loginRoute',
+        'login',
+        'AuthService.login',
+        'UserRepository.findByEmail',
+        'LoginPage',
+        'LoginForm',
+        'useLogin',
+      ]),
     );
-    expect(symbolMetrics.falseNegatives).toEqual(
-      expect.arrayContaining(['login', 'AuthService.login', 'UserRepository.findByEmail', 'LoginForm']),
+    expect(symbolMetrics.recall).toBe(1);
+  });
+
+  it('05-monorepo: cross-package chain resolves, workspaces do not collide', async () => {
+    const root = fixtureRoot('05-monorepo');
+    const scan = await runScan(root, { dbPath: tempDbPath() });
+    const metrics = measureFileMapping(scan, loadGroundTruth(root));
+
+    expect(metrics.featureId).toBe('feature:login');
+
+    // The @company/auth/* alias reaches into the real package sources.
+    expect(metrics.candidates).toEqual(
+      expect.arrayContaining([
+        'packages/auth/src/login.ts',
+        'packages/auth/src/auth-service.ts',
+        'packages/auth/src/user-repository.ts',
+      ]),
     );
+
+    // Workspace identity: neither same-named utils.ts is imported, so
+    // neither appears — and they never collide with each other.
+    expect(metrics.candidates.some((c) => c.endsWith('/utils.ts'))).toBe(false);
+
+    // The endpoint chain is fully reachable: no false negatives.
+    expect(metrics.falseNegatives).toEqual([]);
+    expect(metrics.recall).toBe(1);
+
+    // Symbol level reaches the anchored page and the package methods.
+    const symbolMetrics = measureSymbolMapping(scan, loadGroundTruth(root));
+    expect(symbolMetrics.truePositives).toEqual(
+      expect.arrayContaining([
+        'loginHandler',
+        'login',
+        'AuthService.login',
+        'UserRepository.findByEmail',
+        'LoginPage',
+      ]),
+    );
+    expect(symbolMetrics.recall).toBe(1);
+  });
+
+  it('06-cross-feature: shared boundary file separates by symbol', async () => {
+    const root = fixtureRoot('06-cross-feature');
+    const scan = await runScan(root, { dbPath: tempDbPath() });
+    const loginTruth = loadGroundTruth(root);
+    const logoutTruth = loadGroundTruth(root, 'ground-truth.logout.yaml');
+
+    const loginMetrics = measureFileMapping(scan, loginTruth);
+    const logoutMetrics = measureFileMapping(scan, logoutTruth);
+    expect(loginMetrics.featureId).toBe('feature:login');
+    expect(logoutMetrics.featureId).toBe('feature:logout');
+
+    // File-level closure pulls the shared boundary file and repository
+    // into both features (the documented file-granularity limit), but
+    // the OTHER feature's handler and entry file never leak across.
+    expect(loginMetrics.truePositives).toContain('src/auth/session-service.ts');
+    expect(loginMetrics.falsePositives).not.toContain('src/api/logout-handler.ts');
+    expect(loginMetrics.falsePositives).not.toContain('src/auth/logout.ts');
+    expect(logoutMetrics.truePositives).toContain('src/auth/session-service.ts');
+    expect(logoutMetrics.falsePositives).not.toContain('src/api/login-handler.ts');
+
+    // Symbol level: each feature owns its half of the boundary file.
+    const loginSymbols = measureSymbolMapping(scan, loginTruth);
+    expect(loginSymbols.truePositives).toEqual(
+      expect.arrayContaining(['loginHandler', 'login', 'SessionService.create']),
+    );
+    expect(loginSymbols.falsePositives).not.toContain('SessionService.destroy');
+    expect(loginSymbols.falsePositives).not.toContain('logout');
+
+    const logoutSymbols = measureSymbolMapping(scan, logoutTruth);
+    expect(logoutSymbols.truePositives).toEqual(
+      expect.arrayContaining(['logoutHandler', 'logout', 'SessionService.destroy']),
+    );
+    expect(logoutSymbols.falsePositives).not.toContain('SessionService.create');
+    expect(logoutSymbols.falsePositives).not.toContain('login');
+  });
+
+  it('04-shared-utils: shared infrastructure is down-weighted, never ownership', async () => {
+    const root = fixtureRoot('04-shared-utils');
+    const scan = await runScan(root, { dbPath: tempDbPath() });
+    const billingTruth = loadGroundTruth(root);
+    const notificationTruth = loadGroundTruth(root, 'ground-truth.notification.yaml');
+
+    const byId = new Map(
+      scan.candidates.map((c) => [`${c.featureId}|${c.targetId}`, c]),
+    );
+    const sharedFiles = ['src/shared/logger.ts', 'src/shared/config.ts', 'src/shared/http-client.ts'];
+
+    for (const featureId of ['feature:billing', 'feature:notification']) {
+      // Blocker: shared infrastructure never surfaces as ownership.
+      for (const shared of sharedFiles) {
+        const fileCandidate = byId.get(`${featureId}|${shared}`);
+        expect(fileCandidate?.relation).toBe('DEPENDS_ON');
+        // The config/http-client imports are only 2 features deep, so the
+        // soft cap does not bind (documented calibration item); the
+        // highest-fan-in file (logger, 6 importers) must drop below 50%.
+        if (shared === 'src/shared/logger.ts') {
+          expect(fileCandidate?.score ?? 1).toBeLessThan(0.5);
+        }
+      }
+
+      // Cross-feature isolation: the other feature's code never appears.
+      const other =
+        featureId === 'feature:billing'
+          ? ['src/notification/notification-handler.ts', 'src/notification/notification.ts']
+          : ['src/billing/billing-handler.ts', 'src/billing/billing.ts'];
+      for (const leak of other) {
+        expect(byId.has(`${featureId}|${leak}`)).toBe(false);
+      }
+      // The composition hub is never pulled in from below.
+      expect(byId.has(`${featureId}|src/server.ts`)).toBe(false);
+    }
+
+    // Granularity rule: file-level P/R measures the endpoint-anchored
+    // discovery engine (fixture 02 note); fixture 04 declares file
+    // anchors and has no endpoints, so the file engine yields nothing
+    // and the candidate engine below is the acceptance target.
+    const billingFiles = measureFileMapping(scan, billingTruth);
+    expect(billingFiles.candidates).toEqual([]);
+    const notificationFiles = measureFileMapping(scan, notificationTruth);
+    expect(notificationFiles.candidates).toEqual([]);
+
+    // Symbol level: own chains complete; the only shared symbols that
+    // surface are the ones actually called (log, HttpClient.post) — as
+    // DEPENDS_ON candidates, the reject-flow target population.
+    const billingSymbols = measureSymbolMapping(scan, billingTruth);
+    expect(billingSymbols.pending).toBe(false);
+    expect(billingSymbols.truePositives).toEqual(
+      expect.arrayContaining([
+        'billingHandler',
+        'Billing.run',
+        'InvoiceService.createInvoice',
+        'InvoiceRepository.save',
+      ]),
+    );
+    expect(billingSymbols.recall).toBe(1);
+    expect(billingSymbols.falsePositives).toEqual(
+      expect.arrayContaining(['log', 'HttpClient.post']),
+    );
+    const notificationSymbols = measureSymbolMapping(scan, notificationTruth);
+    expect(notificationSymbols.truePositives).toEqual(
+      expect.arrayContaining([
+        'notificationHandler',
+        'Notification.dispatch',
+        'NotificationService.send',
+        'NotificationRepository.record',
+      ]),
+    );
+    expect(notificationSymbols.recall).toBe(1);
   });
 });

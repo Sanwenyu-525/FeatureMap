@@ -1,0 +1,10 @@
+{
+  "name": "monorepo-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "description": "Ground-truth fixture 05: pnpm-workspace-style monorepo; cross-package imports resolve through root tsconfig paths (@company/auth/*), and same-named files in different workspaces must not collide (workspace identity)."
+}

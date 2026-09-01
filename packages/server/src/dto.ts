@@ -111,7 +111,28 @@ export interface ChangesResponse {
     featureId: string;
     featureName: string;
     confidence: number;
+    severity: 'HIGH' | 'MEDIUM' | 'LOW';
     reasons: string[];
+  }>;
+  /** Changed shared infrastructure (ADR-0004 §4), not attributed to features. */
+  sharedInfrastructure: Array<{
+    path: string;
+    changeType: string;
+    dependentFeatureCount: number;
+    reason: string;
+  }>;
+  /** Below-threshold hits surfaced as uncertainty (ADR-0004 §3). */
+  suppressedUncertainty: Array<{
+    featureId: string;
+    featureName?: string;
+    confidence: number;
+    reason: string;
+  }>;
+  /** Recommended tests for this change set (ADR-0004 §5). */
+  recommendedTests: Array<{
+    path: string;
+    status: 'recommended' | 'related';
+    featureId: string;
   }>;
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
 }
@@ -119,6 +140,28 @@ export interface ChangesResponse {
 /** POST /scan */
 export interface ScanRequest {
   mode: 'incremental' | 'full';
+}
+
+/** GET /features/:id/changes (Milestone 14 / ADR-0004 §6) */
+export interface FeatureChangesResponse {
+  featureId: string;
+  featureName?: string;
+  commits: Array<{
+    sha: string;
+    author: string;
+    email?: string;
+    committedAt?: string;
+    message?: string;
+    kind: string;
+    changedPaths: string[];
+  }>;
+  contributors: Array<{ name: string; count: number }>;
+  stats: {
+    commitCount: number;
+    fileCount: number;
+    contributorCount: number;
+    changeKinds: Record<string, number>;
+  };
 }
 
 /** GET /analyzers */

@@ -148,6 +148,37 @@ describe('expandCandidates', () => {
     });
   });
 
+  it('marks a distance-1 cross-feature import as DEPENDS_ON, never ownership (release-gate P2)', () => {
+    // login imports a billing hook directly (distance 1); billing also
+    // anchors the same file. The file is billing's code, so login must
+    // see it as a dependency — the dify `use-ps-info.ts` misjudgment.
+    const evidence = [
+      IMPORTS('src/login/login-page.ts', 'src/billing/use-ps-info.ts'),
+      IMPORTS('src/billing/use-ps-info.ts', 'src/billing/billing-service.ts'),
+    ];
+    const anchors: AnchorNode[] = [
+      { featureId: 'feature:login', nodeType: 'file', nodeId: 'src/login/login-page.ts', source: 'file' },
+      { featureId: 'feature:billing', nodeType: 'file', nodeId: 'src/billing/use-ps-info.ts', source: 'file' },
+    ];
+    const candidates = expandCandidates(anchors, evidence);
+    const byKey = new Map(candidates.map((c) => [`${c.featureId}|${c.targetId}`, c]));
+
+    // billing owns its own anchor file (declared).
+    expect(byKey.get('feature:billing|src/billing/use-ps-info.ts')).toMatchObject({
+      relation: 'owns',
+      status: 'declared',
+      distance: 0,
+    });
+    // login reaches it at distance 1, but it is billing's code.
+    expect(byKey.get('feature:login|src/billing/use-ps-info.ts')).toMatchObject({
+      relation: 'DEPENDS_ON',
+      distance: 1,
+    });
+    // login's own dependency chain still resolves to ownership for
+    // modules it reaches first (single-owner, closest anchor wins).
+    expect(byKey.has('feature:login|src/billing/billing-service.ts')).toBe(true);
+  });
+
   it('produces deterministic output and fingerprints', () => {
     const evidence = [IMPORTS('src/a.ts', 'src/b.ts'), CONTAINS('src/a.ts', 'symbol:src/a.ts:foo')];
     const anchors = [fileAnchor('src/a.ts')];
@@ -180,18 +211,41 @@ describe('resolveAnchors', () => {
     },
   ];
 
-  it('resolves route anchors to file and handler symbol nodes', () => {
+  it('route anchors resolve to the handler symbol, not the hub registration file', () => {
     const anchors = resolveAnchors(
       [{ featureId: 'feature:login', name: 'POST /api/login' }],
       [],
       evidence,
     );
-    expect(anchors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ nodeType: 'file', nodeId: 'src/server.ts' }),
-        expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/server.ts:loginHandler' }),
-      ]),
+    // Only the handler — a hub file registering many resources must not
+    // pull other features' chains in through its imports.
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0]).toEqual({
+      featureId: 'feature:login',
+      nodeType: 'symbol',
+      nodeId: 'src/server.ts:loginHandler',
+      source: 'route',
+    });
+  });
+
+  it('inline-handler endpoints fall back to the registration file anchor', () => {
+    const anchors = resolveAnchors(
+      [{ featureId: 'feature:login', name: 'POST /api/ping' }],
+      [],
+      [
+        {
+          sourceType: 'endpoint',
+          sourceId: 'endpoint:POST /api/ping',
+          relationType: 'ROUTES_TO',
+          targetType: 'file',
+          targetId: 'src/ping.ts',
+          confidence: 1.0,
+        },
+      ],
     );
+    expect(anchors).toEqual([
+      { featureId: 'feature:login', nodeType: 'file', nodeId: 'src/ping.ts', source: 'route' },
+    ]);
   });
 
   it('resolves declared file/symbol/route anchors', () => {
@@ -208,7 +262,7 @@ describe('resolveAnchors', () => {
       expect.arrayContaining([
         expect.objectContaining({ nodeType: 'file', nodeId: 'src/login/page.tsx', source: 'file' }),
         expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/auth.ts:login', source: 'symbol' }),
-        expect.objectContaining({ nodeType: 'file', nodeId: 'src/server.ts', source: 'route' }),
+        expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/server.ts:loginHandler', source: 'route' }),
       ]),
     );
   });

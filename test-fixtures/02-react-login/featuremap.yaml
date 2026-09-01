@@ -1,0 +1,13 @@
+project:
+  name: react-login
+
+scan:
+  ignore:
+    - .env
+    - .env.*
+
+features:
+  anchors:
+    - feature: login
+      type: file
+      target: src/login/LoginPage.tsx

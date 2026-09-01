@@ -1,0 +1,99 @@
+{
+  "comment": "Human-labeled ground truth for dogfooding P/R measurement (docs/releases/v0.2-acceptance.md §14). File-level candidates from the anchor-driven engine. notExpected lists files that are plausible confusions but must NOT surface.",
+  "repo": "D:/Develop/FeatureMap",
+  "features": [
+    {
+      "feature": "typescript-analyzer",
+      "expectedFiles": ["packages/analyzer/src/analyzers/typescript.ts"],
+      "notExpectedFiles": [
+        "packages/analyzer/src/analyzers/express.ts",
+        "packages/analyzer/src/analyzers/markdown.ts",
+        "packages/analyzer/src/git-info.ts"
+      ]
+    },
+    {
+      "feature": "candidate-mapping",
+      "expectedFiles": ["packages/pipeline/src/candidates.ts"],
+      "notExpectedFiles": [
+        "packages/pipeline/src/review.ts",
+        "packages/pipeline/src/graph.ts",
+        "packages/pipeline/src/incremental.ts",
+        "packages/pipeline/src/mapping-quality.ts"
+      ]
+    },
+    {
+      "feature": "review-workflow",
+      "expectedFiles": ["packages/pipeline/src/review.ts", "packages/pipeline/src/feature-discovery.ts"],
+      "notExpectedFiles": [
+        "packages/pipeline/src/candidates.ts",
+        "packages/pipeline/src/impact.ts",
+        "packages/pipeline/src/incremental.ts"
+      ]
+    },
+    {
+      "feature": "incremental-scan",
+      "expectedFiles": ["packages/pipeline/src/incremental.ts"],
+      "notExpectedFiles": [
+        "packages/pipeline/src/candidates.ts",
+        "packages/analyzer/src/analyzers/typescript.ts",
+        "packages/pipeline/src/graph.ts"
+      ]
+    },
+    {
+      "feature": "change-impact",
+      "expectedFiles": ["packages/pipeline/src/impact.ts"],
+      "notExpectedFiles": [
+        "packages/pipeline/src/review.ts",
+        "packages/pipeline/src/candidates.ts",
+        "packages/pipeline/src/incremental.ts",
+        "packages/pipeline/src/graph.ts"
+      ]
+    },
+    {
+      "feature": "code-graph",
+      "expectedFiles": ["packages/pipeline/src/graph.ts"],
+      "notExpectedFiles": [
+        "packages/pipeline/src/impact.ts",
+        "packages/pipeline/src/candidates.ts",
+        "packages/pipeline/src/review.ts"
+      ]
+    },
+    {
+      "feature": "mcp-tools",
+      "expectedFiles": ["packages/mcp/src/tools.ts", "packages/mcp/src/index.ts"],
+      "notExpectedFiles": [
+        "packages/server/src/app.ts",
+        "packages/server/src/dto.ts"
+      ]
+    },
+    {
+      "feature": "local-api",
+      "expectedFiles": ["packages/server/src/app.ts", "packages/server/src/dto.ts"],
+      "notExpectedFiles": [
+        "apps/web/src/App.tsx",
+        "packages/mcp/src/tools.ts",
+        "packages/pipeline/src/review.ts"
+      ]
+    },
+    {
+      "feature": "web-ui",
+      "expectedFiles": [
+        "apps/web/src/main.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/api/client.ts",
+        "apps/web/src/pages/OverviewPage.tsx",
+        "apps/web/src/pages/FeaturesPage.tsx",
+        "apps/web/src/pages/FeatureDetailPage.tsx",
+        "apps/web/src/pages/ChangesPage.tsx",
+        "apps/web/src/pages/FeatureFlowView.tsx",
+        "apps/web/src/pages/shared.tsx",
+        "apps/web/src/flow/buildFlow.ts",
+        "apps/web/src/styles.css"
+      ],
+      "notExpectedFiles": [
+        "packages/server/src/app.ts",
+        "packages/pipeline/src/scan-runner.ts"
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@
  * (`scan`) and the local API (`POST /scan`).
  */
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { loadConfig, DEFAULT_FEATURE_HEALTH } from '@featuremap/core';
@@ -17,6 +18,7 @@ import {
   assetId,
   evidenceId,
   collectGitInfo,
+  loadModuleResolution,
   WORKING_TREE_SHA,
   BRANCH_DIFF_SHA,
   type PlatformOutput,
@@ -148,8 +150,10 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // ---- Incremental analysis inputs (Milestone 9) ---------------------------
   // The store opens before analysis: previous file hashes feed changed-file
   // detection and the analysis cache persists across runs. Cache keys
-  // include the file-set signature, so added/removed files degrade to a
-  // full re-analysis instead of stale edges.
+  // include the file-set signature (plus the tsconfig hash, because alias
+  // resolution changes cross-file edges without touching file contents),
+  // so structural or config changes degrade to a full re-analysis instead
+  // of stale edges.
   const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
   const { db, sqlite } = openDatabase(dbPath);
   const previousHashes = new Map(
@@ -162,8 +166,6 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   const changedFilePaths = new Set(
     scan.files.filter((f) => previousHashes.get(f.path) !== f.hash).map((f) => f.path),
   );
-  const fileSetKey = fileSetKeyOf(scan.files.map((f) => f.path));
-  const analysisCache = new SqliteAnalysisCache(db);
 
   // Step 7: deterministic analyzers (failures isolated per analyzer)
   const readFile = (rel: string): string | undefined => {
@@ -173,6 +175,15 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       return undefined;
     }
   };
+  const moduleResolution = loadModuleResolution(readFile);
+  const moduleResolutionKey =
+    moduleResolution === undefined ? '' : createHash('sha256').update(JSON.stringify(moduleResolution)).digest('hex').slice(0, 12);
+  const fileSetKey = fileSetKeyOf([
+    ...scan.files.map((f) => f.path),
+    `tsconfig:${moduleResolutionKey}`,
+  ]);
+  const analysisCache = new SqliteAnalysisCache(db);
+
   const enabledSet = new Set<string>(config.analyzers.enabled);
   const plugins = builtInAnalyzers.filter((p) => enabledSet.has(p.id));
   const output = await runAnalyzers(
@@ -185,12 +196,13 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       changedFiles: changedFilePaths,
       fileSetKey,
       cache: analysisCache,
+      moduleResolution,
     },
     scan.files,
   );
 
   // Git facts (degrades gracefully without git)
-  const gitInfo = await collectGitInfo(scan.repoRoot, config.scan.baseBranch);
+  const gitInfo = await collectGitInfo(scan.repoRoot, config.scan.baseBranch, config.git.logLimit);
 
   // ---- Derived artifacts -------------------------------------------------
   const symbols = collectSymbols(output);
@@ -218,6 +230,8 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   const discoveredIds = new Set(discovered.map((f) => f.id));
   for (const anchor of declaredAnchors) {
     if (discoveredIds.has(anchor.featureId)) continue;
+    // Mark immediately: several anchors may share one feature.
+    discoveredIds.add(anchor.featureId);
     const name = anchor.featureId.slice('feature:'.length);
     discovered.push({
       id: anchor.featureId,
@@ -238,6 +252,14 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   );
   const anchorNodes = resolveAnchors(endpointAnchors, declaredAnchors, output.evidence);
   const candidates = expandCandidates(anchorNodes, output.evidence);
+
+  // The markdown analyzer's document judgment can be wider than the
+  // scanner's document inventory; feature↔document joins must reference
+  // rows that exist (surfaced by the AI_Manga real-project scan).
+  const documentPaths = new Set(scan.documents.map((d) => d.path));
+  for (const feature of discovered) {
+    feature.documents = feature.documents.filter((d) => documentPaths.has(d));
+  }
 
   const fileAssetId = (path: string): string =>
     assetId({ type: isTestPath(path) ? 'test' : 'file', path });
@@ -320,6 +342,35 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // ---- Persist (step 9) ----------------------------------------------------
   let candidateDtos: CandidateDto[] = [];
   try {
+    // Acceptance §1 Blocker: a declared anchor that resolves to nothing is
+    // a configuration error — fail with a clear message instead of
+    // silently producing zero candidates for the feature. Route anchors
+    // are excluded: an endpoint that vanished in a refactor is a normal
+    // lifecycle event, not a config mistake. (Inside the try so the
+    // database handle is released on the error path.)
+    {
+      const filePaths = new Set(scan.files.map((f) => f.path));
+      const symbolIds = new Set(symbols.map((s) => s.id));
+      for (const anchor of config.features.anchors) {
+        if (anchor.type === 'file') {
+          if (!filePaths.has(anchor.target)) {
+            throw new Error(
+              `Anchor error: file "${anchor.target}" (feature "${anchor.feature}") is not in the scanned file inventory. Check the anchors block in featuremap.yaml.`,
+            );
+          }
+        } else if (anchor.type === 'symbol' || anchor.type === 'component') {
+          const bare = anchor.target.startsWith('symbol:')
+            ? anchor.target.slice('symbol:'.length)
+            : anchor.target;
+          if (!symbolIds.has(`symbol:${bare}`)) {
+            throw new Error(
+              `Anchor error: symbol "${anchor.target}" (feature "${anchor.feature}") was not found by the analyzers. Verify the symbol exists and is parsed (exported symbols resolve best).`,
+            );
+          }
+        }
+      }
+    }
+
     const projectId = projectIdFor(scan.repoRoot);
     db.insert(schema.projects)
       .values({

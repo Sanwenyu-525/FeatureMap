@@ -13,7 +13,10 @@
  * everything else is deterministic (1.0).
  */
 import * as ts from 'typescript';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { normalizePath } from '@featuremap/core';
 import type {
   AnalyzerPlugin,
@@ -30,6 +33,26 @@ import { emptyResult } from '@featuremap/plugin-sdk';
 const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 
 export const symbolId = (path: string, name: string): string => `symbol:${path}:${name}`;
+
+/**
+ * Hash of this analyzer's executed code (the compiled module file).
+ * Cache keys embed it so that editing the analyzer and rebuilding
+ * invalidates stale per-file evidence automatically — the release-gate
+ * P2 that a hand-bumped version string alone kept missing
+ * (docs/reports/v0.2-release-gate-2026-09-01.md).
+ */
+export const typescriptAnalyzerCodeHash = createHash('sha256')
+  .update(readFileSync(fileURLToPath(import.meta.url), 'utf8'))
+  .digest('hex')
+  .slice(0, 8);
+
+/** Deterministic per-file cache key; the analyzer code hash participates so code changes never replay stale evidence. */
+export const typescriptCacheKeyOf = (
+  file: ScannedFile,
+  fileSetKey: string,
+  codeHash: string = typescriptAnalyzerCodeHash,
+): string =>
+  `${typescriptAnalyzer.id}:${typescriptAnalyzer.version}:${codeHash}:${file.hash}:${fileSetKey}`;
 
 function isScriptFile(path: string): boolean {
   const lower = path.toLowerCase();
@@ -63,13 +86,79 @@ export function resolveSpecifier(
   fromPath: string,
   specifier: string,
   fileSet: Set<string>,
+  resolution?: TsconfigModuleResolution,
 ): string | undefined {
-  if (!specifier.startsWith('.')) return undefined;
-  const base = normalizePath(join(dirname(fromPath), specifier).replace(/\\/g, '/'));
-  for (const candidate of candidatePaths(base)) {
-    if (fileSet.has(candidate)) return candidate;
+  if (specifier.startsWith('.')) {
+    const base = normalizePath(join(dirname(fromPath), specifier).replace(/\\/g, '/'));
+    for (const candidate of candidatePaths(base)) {
+      // Only script files enter the code graph: resolving JSON/CSS
+      // imports (e.g. `import pkg from './package.json'`) would add
+      // data assets as IMPORTS noise (release-gate P2).
+      if (fileSet.has(candidate) && isScriptFile(candidate)) return candidate;
+    }
+    return undefined;
+  }
+  // tsconfig paths + baseUrl (v0.2 acceptance §1 Blocker). Simplification:
+  // baseUrl is interpreted relative to the repository root (the standard
+  // single-tsconfig layout); nested per-package tsconfigs are out of scope.
+  if (!resolution) return undefined;
+  const candidates: string[] = [];
+  for (const [pattern, targets] of Object.entries(resolution.paths ?? {})) {
+    if (pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -2);
+      if (specifier.startsWith(prefix) && specifier.length > prefix.length) {
+        const rest = specifier.slice(prefix.length);
+        for (const target of targets) {
+          candidates.push(target.endsWith('/*') ? target.slice(0, -2) + rest : target);
+        }
+      }
+    } else if (pattern === specifier) {
+      candidates.push(...targets);
+    }
+  }
+  if (resolution.baseUrl) candidates.push(specifier);
+  for (const base of candidates) {
+    // tsconfig paths targets are commonly written as `./*` (dify) or
+    // `src/*` (fixture 03): normalize away a leading `./` so the
+    // file-set lookup matches repo-relative ids (real-project finding).
+    const normalized = normalizePath(base.replace(/\\/g, '/')).replace(/^\.\//, '');
+    for (const candidate of candidatePaths(normalized)) {
+      if (fileSet.has(candidate) && isScriptFile(candidate)) return candidate;
+    }
   }
   return undefined;
+}
+
+export interface TsconfigModuleResolution {
+  baseUrl?: string;
+  paths?: Record<string, string[]>;
+}
+
+/**
+ * Read tsconfig.json compilerOptions.baseUrl/paths from the scanned
+ * repository (tsconfig may contain comments — parsed via the
+ * TypeScript compiler API). Returns undefined when absent or empty.
+ */
+export function loadModuleResolution(
+  readFile: (path: string) => string | undefined,
+): TsconfigModuleResolution | undefined {
+  const text = readFile('tsconfig.json');
+  if (text === undefined) return undefined;
+  const parsed = ts.readConfigFile('tsconfig.json', () => text);
+  if (parsed.error !== undefined) return undefined;
+  const options = (parsed.config as { compilerOptions?: Record<string, unknown> })?.compilerOptions ?? {};
+  const baseUrl = typeof options['baseUrl'] === 'string' ? (options['baseUrl'] as string).replace(/\\/g, '/') : undefined;
+  const rawPaths = options['paths'];
+  const paths: Record<string, string[]> = {};
+  if (rawPaths !== null && typeof rawPaths === 'object') {
+    for (const [pattern, targets] of Object.entries(rawPaths as Record<string, unknown>)) {
+      if (Array.isArray(targets)) {
+        paths[pattern] = targets.map((t) => String(t).replace(/\\/g, '/'));
+      }
+    }
+  }
+  if (!baseUrl && Object.keys(paths).length === 0) return undefined;
+  return { baseUrl, paths };
 }
 
 interface SymbolInfo {
@@ -149,13 +238,14 @@ function extractNamedImports(
   sourceFile: ts.SourceFile,
   filePath: string,
   fileSet: Set<string>,
+  resolution?: TsconfigModuleResolution,
 ): NamedImport[] {
   const imports: NamedImport[] = [];
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
       continue;
     }
-    const resolved = resolveSpecifier(filePath, statement.moduleSpecifier.text, fileSet);
+    const resolved = resolveSpecifier(filePath, statement.moduleSpecifier.text, fileSet, resolution);
     if (!resolved) continue;
     const clause = statement.importClause;
     if (!clause) continue;
@@ -376,9 +466,10 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
     const result = emptyResult();
     const scriptFiles = context.files.filter((f) => isScriptFile(f.path));
     const fileSet = new Set(context.files.map((f) => f.path));
+    const resolution = context.moduleResolution;
     const cache = context.cache;
     const cacheKeyOf = (file: ScannedFile): string =>
-      `${typescriptAnalyzer.id}:${typescriptAnalyzer.version}:${file.hash}:${context.fileSetKey ?? ''}`;
+      typescriptCacheKeyOf(file, context.fileSetKey ?? '');
     let cacheHits = 0;
     let cacheMisses = 0;
 
@@ -422,7 +513,7 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
       const analysis: FileAnalysis = {
         sourceFile,
         symbols,
-        namedImports: extractNamedImports(sourceFile, file.path, fileSet),
+        namedImports: extractNamedImports(sourceFile, file.path, fileSet, resolution),
       };
       analyses.push({ path: file.path, analysis, cacheKey: key });
       registries.set(file.path, new Map(symbols.map((s) => [s.name, s])));
@@ -473,7 +564,7 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
           specifier = statement.moduleSpecifier.text;
         }
         if (!specifier) continue;
-        const resolved = resolveSpecifier(filePath, specifier, fileSet);
+        const resolved = resolveSpecifier(filePath, specifier, fileSet, resolution);
         if (resolved) {
           importEvidence.push({
             sourceType: 'file',

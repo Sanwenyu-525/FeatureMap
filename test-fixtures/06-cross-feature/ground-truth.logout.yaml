@@ -1,0 +1,31 @@
+# Ground truth (logout side) — docs/releases/v0.2-acceptance.md §2.
+#
+# Mirror of ground-truth.yaml: the logout feature owns the destroy()
+# half of the shared session-service boundary file.
+feature: logout
+pattern: Authentication
+
+anchors:
+  - type: endpoint
+    target: POST /api/logout
+
+expected:
+  - logoutHandler
+  - logout
+  - SessionService.destroy
+
+notExpected:
+  - loginHandler
+  - login
+  - SessionService.create
+
+expectedFiles:
+  - src/server.ts
+  - src/api/logout-handler.ts
+  - src/auth/logout.ts
+  - src/auth/session-service.ts
+  - src/services/user-repository.ts
+
+notExpectedFiles:
+  - src/api/login-handler.ts
+  - src/auth/login.ts

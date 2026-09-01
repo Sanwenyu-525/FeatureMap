@@ -1,0 +1,13 @@
+project:
+  name: nextjs-auth
+
+scan:
+  ignore:
+    - .env
+    - .env.*
+
+features:
+  anchors:
+    - feature: login
+      type: file
+      target: src/app/login/page.tsx

@@ -16,8 +16,10 @@
  * - score = pathConfidence × DISTANCE_DECAY^distance × fanInFactor —
  *   high fan-in shared infrastructure (logger, config, UI primitives)
  *   is down-weighted so it never surfaces as ownership
- * - owns: distance ≤ 1 (short, strong chain from the anchor);
- *   DEPENDS_ON: reached transitively (ADR-0003 §3)
+ * - owns: the anchor itself, or a short chain (distance ≤ 1) whose
+ *   target this feature wins ownership arbitration for — a node close
+ *   to ANOTHER feature's anchor is that feature's code and stays a
+ *   dependency here; DEPENDS_ON: reached transitively (ADR-0003 §3)
  */
 import { createHash } from 'node:crypto';
 
@@ -157,6 +159,19 @@ export function expandCandidates(
   relational.sort(byEdge);
   structural.sort(byEdge);
 
+  /**
+   * Symbol candidate eligibility (docs/releases/v0.2-acceptance.md §2,
+   * cross-feature boundary rule): a symbol is a candidate for a feature
+   * only when a relational edge (CALLS / component usage) pointing at
+   * it starts from a node that feature's traversal actually reaches —
+   * per feature, never globally. CONTAINS is a traversal channel: a
+   * shared boundary file's other symbols are not pulled into the
+   * feature just because the file is.
+   */
+  const relationalSymbolEdges = relational
+    .filter((e) => e.to.startsWith('symbol:'))
+    .map((e) => ({ from: e.from, to: e.to }));
+
   const outgoing = new Map<string, GraphEdge[]>();
   for (const edge of [...relational, ...structural]) {
     const list = outgoing.get(edge.from) ?? [];
@@ -210,13 +225,61 @@ export function expandCandidates(
     }
   }
 
+  // ---- Ownership arbitration (release-gate P2) --------------------------
+  // A node reachable as `owns` (distance ≤ 1) from more than one
+  // feature's anchor belongs to the closest one; every other feature
+  // reaches it only as DEPENDS_ON. Otherwise a distance-1 cross-feature
+  // import (one feature importing another's component, e.g. the dify
+  // `use-ps-info.ts` case) would be mislabelled as ownership
+  // (docs/reports/v0.2-release-gate-2026-09-01.md §4).
+  const ownerOf = new Map<string, string>();
+  for (const [featureId, featureStates] of states) {
+    for (const [node, state] of featureStates) {
+      if (state.distance > 1) continue;
+      const currentOwner = ownerOf.get(node);
+      if (currentOwner === undefined) {
+        ownerOf.set(node, featureId);
+        continue;
+      }
+      const current = states.get(currentOwner)!.get(node)!;
+      const better =
+        state.distance < current.distance ||
+        (state.distance === current.distance &&
+          state.pathConfidence > current.pathConfidence) ||
+        (state.distance === current.distance &&
+          state.pathConfidence === current.pathConfidence &&
+          featureId < currentOwner);
+      if (better) ownerOf.set(node, featureId);
+    }
+  }
+
   // ---- Materialize candidates ------------------------------------------
   const candidates: CandidateRelation[] = [];
   for (const [featureId, featureStates] of states) {
+    // Per-feature eligibility: a relational edge into a symbol counts
+    // only when its source is inside THIS feature's reachable set.
+    const eligibleSymbols = new Set(
+      relationalSymbolEdges
+        .filter((e) => featureStates.has(e.from))
+        .map((e) => e.to),
+    );
     for (const [node, state] of featureStates) {
       const targetType: 'file' | 'symbol' = node.startsWith('symbol:') ? 'symbol' : 'file';
       const targetId = node.slice(targetType.length + 1);
       const isAnchor = state.distance === 0 && state.chain.length === 0;
+      // Boundary rule: symbols reached only through CONTAINS at distance
+      // > 0 (their containing file was pulled in transitively) need a
+      // relational edge of their own — from this feature's own reached
+      // set. Symbols of anchor files themselves (distance 0) are part
+      // of the anchor.
+      if (
+        targetType === 'symbol' &&
+        !isAnchor &&
+        state.distance > 0 &&
+        !eligibleSymbols.has(node)
+      ) {
+        continue;
+      }
       const score = isAnchor
         ? 1
         : Math.min(
@@ -231,11 +294,16 @@ export function expandCandidates(
         targetId: edge.to.startsWith('symbol:') ? edge.to.slice('symbol:'.length) : edge.to.slice('file:'.length),
         confidence: edge.confidence,
       }));
+      // The anchor itself, or a node this feature owns (closest anchor
+      // wins arbitration), is `owns`; anything owned by another feature
+      // — or reached only transitively — is a dependency.
+      const isOwnedByThisFeature =
+        isAnchor || (ownerOf.get(node) !== undefined && ownerOf.get(node) === featureId);
       candidates.push({
         featureId,
         targetType,
         targetId,
-        relation: state.distance <= 1 ? 'owns' : 'DEPENDS_ON',
+        relation: isOwnedByThisFeature ? 'owns' : 'DEPENDS_ON',
         status: isAnchor ? 'declared' : 'suggested',
         score: Number(score.toFixed(4)),
         distance: state.distance,
@@ -272,10 +340,10 @@ export function resolveAnchors(
   const resolveRoute = (featureId: string, name: string): void => {
     const sourceIds = [`endpoint:${name}`, `cli_command:${name}`];
     for (const sourceId of sourceIds) {
-      const route = routeTargets.get(`ROUTES_TO|${sourceId}`);
-      if (route) {
-        anchors.push({ featureId, nodeType: 'file', nodeId: route.targetId, source: 'route' });
-      }
+      // The handler symbol is the feature's entry. The file that merely
+      // registers the route is NOT an anchor: a hub file registering
+      // many resources would otherwise pull every other feature's chain
+      // into this one (same insight as the discovery-side hub rule).
       const handler = routeTargets.get(`HANDLED_BY|${sourceId}`);
       if (handler) {
         anchors.push({
@@ -284,6 +352,13 @@ export function resolveAnchors(
           nodeId: stripSymbolPrefix(handler.targetId),
           source: 'route',
         });
+        continue;
+      }
+      // Inline handlers have no symbol — the registration file proves
+      // implementation and becomes the anchor.
+      const route = routeTargets.get(`ROUTES_TO|${sourceId}`);
+      if (route) {
+        anchors.push({ featureId, nodeType: 'file', nodeId: route.targetId, source: 'route' });
       }
     }
   };

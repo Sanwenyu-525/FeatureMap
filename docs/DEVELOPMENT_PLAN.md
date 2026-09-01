@@ -278,6 +278,150 @@ On a project with few changed files, an incremental rescan rebuilds
 only affected graph nodes and produces identical evidence for
 unchanged regions.
 
+## Milestone 10 — Git Change Model (v0.3.0)
+
+Goal: give commits and diffs a first-class, inspectable data model.
+See ADR-0004 §1–§2.
+
+Implement:
+
+- unified change source model: working-tree / branch-diff /
+  commit-range (single abstraction for CLI, API, MCP)
+- diff hunk collection on demand via native git CLI — hunk headers
+  and line ranges only, no diff content persisted (AGENTS.md §13)
+- changed-symbol extraction: hunk line ranges ∩ symbol line spans,
+  confidence 1.0; marked approximate when the range tip is not HEAD
+  or the scan is stale
+- configurable git log window (`git.logLimit`, default 200)
+
+CLI:
+
+```bash
+featuremap git inspect <commit-ish>
+```
+
+Exit criteria:
+
+A scripted fixture commit sequence produces deterministic changed
+files and changed symbols, with symbol matches backed by evidence and
+approximate matches labeled.
+
+## Milestone 11 — Commit → Feature Impact (v0.3.1)
+
+Goal: make impact answer "what did this commit (range) do to
+features?".
+
+Implement:
+
+- `featuremap impact [<range>]` — no argument keeps today's
+  working-tree + branch-diff behavior
+- commit-range → changed symbols → feature traversal over
+  `owns`/`DEPENDS_ON` relations (evidence-backed only, AGENTS.md §9)
+
+CLI:
+
+```bash
+featuremap impact HEAD
+featuremap impact HEAD~1..HEAD
+featuremap impact main..HEAD
+```
+
+Exit criteria:
+
+`impact HEAD~1..HEAD` on the fixture produces explainable affected
+features — every feature in the output carries its evidence chain.
+
+## Milestone 12 — Impact Severity & Shared Infrastructure (v0.3.2)
+
+Goal: rank impact honestly instead of listing everything.
+
+Implement:
+
+- severity bands HIGH / MEDIUM / LOW (ADR-0004 §3) — rule-based,
+  reasons attached, no opaque percentages (AGENTS.md §7)
+- shared-infrastructure isolation: fan-in ≥ 3 features → separate
+  "Shared Infrastructure" section, never attributed as feature impact
+  (ADR-0004 §4)
+- below-threshold evidence surfaced as explicit uncertainty
+
+Exit criteria:
+
+Changing `Logger` in the fixture does not attribute ownership impact
+to every feature; changing `AuthService.login` yields Login as HIGH
+with a symbol-level reason.
+
+## Milestone 13 — Test Recommendations (v0.3.3)
+
+Goal: turn impact into an actionable test plan.
+
+Implement:
+
+- "Recommended tests" section in impact output: ✓ (associated with a
+  HIGH/MEDIUM affected feature) and ? (transitive/shared) statuses
+  (ADR-0004 §5)
+- sourced from the existing test-import → feature-closure
+  association; labeled as recommendations, not coverage claims
+
+Exit criteria:
+
+The acceptance scenario fixture recommends the Login and Session
+tests, and does not recommend unrelated feature tests.
+
+## Milestone 14 — Feature Timeline (v0.3.4)
+
+Goal: give features a time dimension in the UI.
+
+Implement:
+
+- per-feature history derived at query time (ADR-0004 §6): commits,
+  contributors, churn, change kinds (feat/fix prefix)
+- Changes tab in the Feature Detail page (Overview / Code /
+  Dependencies / Changes / Tests)
+- `GET /api/features/:id/changes` endpoint
+
+Exit criteria:
+
+A feature page shows a commit timeline with contributors and churn
+for the configured log window, each entry traceable to its commit and
+feature mapping evidence.
+
+## Phase 3 acceptance scenario
+
+Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,
+UserRepository) plus Session and a shared Logger. One commit changes
+`AuthService.login`, `TokenService.create`, and `Logger`. Then:
+
+```bash
+featuremap impact HEAD~1..HEAD
+```
+
+must yield:
+
+```text
+Affected Features
+
+HIGH
+  Login       — AuthService.login changed directly (symbol-level)
+
+MEDIUM
+  Session     — TokenService is a dependency (1 hop)
+
+Shared Infrastructure
+  Logger      — depended on by 4+ features, not attributed
+
+Recommended Tests
+✓ auth/login.test.ts
+? session/token.test.ts
+```
+
+Not acceptable: Register / Profile / Checkout / Settings appearing
+because they import shared code. If this scenario passes stably,
+Phase 3 delivers its intended value step over v0.2.
+
+Phase 4 (GitHub/GitLab PR Intelligence) starts only after the local
+loop above proves daily value — automating output nobody reads
+locally is not a goal.
+
 ## Mapping quality (cross-cutting, starts with Milestone 6)
 
 Fixture repositories with ground-truth feature mappings
@@ -295,6 +439,12 @@ all-fixture average Precision ≥ 80% / Recall ≥ 65%, shared-infra
 false-positive rate < 10%), the Performance Gate (baseline-first,
 calibrated), the end-to-end acceptance scenario, and the usability /
 dogfooding checks.
+
+Status: the Blocker checklist is fully verified (2026-09-01, see
+`docs/reports/v0.2-release-gate-2026-09-01.md`), the §5 end-to-end
+scenario and §7 dogfooding pass, and the six-fixture Quality Gate
+suite (01–06, including the shared-infrastructure fixture 04) is in
+place with fixture-level assertions pinning shared-infra behavior.
 
 ## Recommended build order inside Milestone 1
 

@@ -39,6 +39,12 @@ export interface AnalysisCache {
   put(key: string, payload: unknown): void;
 }
 
+/** tsconfig compilerOptions.baseUrl/paths, read by the scan runner. */
+export interface ModuleResolution {
+  baseUrl?: string;
+  paths?: Record<string, string[]>;
+}
+
 export interface AnalyzeContext extends DetectContext {
   /** Only files passing config ignore rules are provided. */
   config: {
@@ -51,6 +57,8 @@ export interface AnalyzeContext extends DetectContext {
   fileSetKey?: string;
   /** Cross-run per-file analysis cache (Milestone 9). */
   cache?: AnalysisCache;
+  /** tsconfig paths/baseUrl for non-relative import resolution (v0.2). */
+  moduleResolution?: ModuleResolution;
 }
 
 /** Asset produced by an analyzer; ids are assigned by the platform. */

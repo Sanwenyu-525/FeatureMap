@@ -15,7 +15,7 @@ import type {
   DetectionResult,
 } from '@featuremap/plugin-sdk';
 import { emptyResult } from '@featuremap/plugin-sdk';
-import { resolveSpecifier, symbolId } from './typescript.js';
+import { resolveSpecifier, symbolId, type TsconfigModuleResolution } from './typescript.js';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'all', 'use']);
 const RECEIVER_PATTERN = /^(app|router|api)$/;
@@ -51,6 +51,7 @@ export const expressAnalyzer: AnalyzerPlugin = {
   analyze(context: AnalyzeContext): AnalyzerResult {
     const result = emptyResult();
     const fileSet = new Set(context.files.map((f) => f.path));
+    const resolution = context.moduleResolution;
 
     for (const file of context.files.filter((f) => isScriptFile(f.path))) {
       const content = context.readFile(file.path);
@@ -103,7 +104,7 @@ export const expressAnalyzer: AnalyzerPlugin = {
               // Resolve a handler identifier to a symbol (same file or import).
               if (handlerArg && ts.isIdentifier(handlerArg)) {
                 const handlerName = handlerArg.text;
-                const targetFile = findSymbolFile(handlerName, file.path, sourceFile, fileSet);
+                const targetFile = findSymbolFile(handlerName, file.path, sourceFile, fileSet, resolution);
                 if (targetFile) {
                   result.evidence.push({
                     sourceType: 'endpoint',
@@ -132,6 +133,7 @@ function findSymbolFile(
   currentFile: string,
   sourceFile: ts.SourceFile,
   fileSet: Set<string>,
+  resolution?: TsconfigModuleResolution,
 ): string | undefined {
   // Defined in the same file?
   const local = sourceFile.statements.some(
@@ -146,7 +148,7 @@ function findSymbolFile(
   // Imported from another repository file?
   for (const st of sourceFile.statements) {
     if (ts.isImportDeclaration(st) && ts.isStringLiteral(st.moduleSpecifier)) {
-      const resolved = resolveSpecifier(currentFile, st.moduleSpecifier.text, fileSet);
+      const resolved = resolveSpecifier(currentFile, st.moduleSpecifier.text, fileSet, resolution);
       if (!resolved) continue;
       const named = st.importClause?.namedBindings;
       if (named && ts.isNamedImports(named)) {

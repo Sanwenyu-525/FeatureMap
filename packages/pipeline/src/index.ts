@@ -8,3 +8,5 @@ export * from './graph.js';
 export * from './mapping-quality.js';
 export * from './candidates.js';
 export * from './review.js';
+export * from './git/index.js';
+export * from './timeline.js';
