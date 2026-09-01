@@ -25,6 +25,7 @@ import {
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
 import { discoverFeatures, isTestPath, slugify, type DiscoveredFeature } from './feature-discovery.js';
 import { expandCandidates, resolveAnchors } from './candidates.js';
+import { SqliteAnalysisCache, fileSetKeyOf } from './incremental.js';
 
 export interface ScanJsonOutput {
   project: {
@@ -45,6 +46,9 @@ export interface ScanJsonOutput {
     candidates: number;
     evidence: number;
     commits: number;
+    /** Milestone 9: incremental analysis counters. */
+    changedFiles: number;
+    cachedFiles: number;
   };
   files: Array<{ path: string; hash: string; language?: string; size: number }>;
   symbols: Array<{ path: string; name: string; kind: string; exported: boolean }>;
@@ -67,6 +71,7 @@ export interface ScanJsonOutput {
     status: string;
     assetCount: number;
     evidenceCount: number;
+    stats: Record<string, number>;
   }>;
 }
 
@@ -140,6 +145,26 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
     baseBranch: config.scan.baseBranch,
   });
 
+  // ---- Incremental analysis inputs (Milestone 9) ---------------------------
+  // The store opens before analysis: previous file hashes feed changed-file
+  // detection and the analysis cache persists across runs. Cache keys
+  // include the file-set signature, so added/removed files degrade to a
+  // full re-analysis instead of stale edges.
+  const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
+  const { db, sqlite } = openDatabase(dbPath);
+  const previousHashes = new Map(
+    db
+      .select({ path: schema.files.path, hash: schema.files.hash })
+      .from(schema.files)
+      .all()
+      .map((r) => [r.path, r.hash ?? '']),
+  );
+  const changedFilePaths = new Set(
+    scan.files.filter((f) => previousHashes.get(f.path) !== f.hash).map((f) => f.path),
+  );
+  const fileSetKey = fileSetKeyOf(scan.files.map((f) => f.path));
+  const analysisCache = new SqliteAnalysisCache(db);
+
   // Step 7: deterministic analyzers (failures isolated per analyzer)
   const readFile = (rel: string): string | undefined => {
     try {
@@ -157,6 +182,9 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       files: scan.files,
       readFile,
       config: { analyzers: config.analyzers.enabled, scan: config.scan },
+      changedFiles: changedFilePaths,
+      fileSetKey,
+      cache: analysisCache,
     },
     scan.files,
   );
@@ -290,8 +318,6 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   ];
 
   // ---- Persist (step 9) ----------------------------------------------------
-  const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
-  const { db, sqlite } = openDatabase(dbPath);
   let candidateDtos: CandidateDto[] = [];
   try {
     const projectId = projectIdFor(scan.repoRoot);
@@ -508,6 +534,10 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       .where(eq(schema.scans.id, scanId))
       .run();
 
+    // Drop analysis-cache entries that no longer match the file set
+    // (added/removed files already degrade to full re-analysis).
+    analysisCache.prune(fileSetKey);
+
     candidateDtos = db
       .select()
       .from(schema.featureCandidates)
@@ -551,6 +581,8 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       candidates: candidateDtos.length,
       evidence: allEvidence.length,
       commits: gitInfo.commits.length,
+      changedFiles: changedFilePaths.size,
+      cachedFiles: scan.files.length - changedFilePaths.size,
     },
     files: scan.files.map((f) => ({
       path: f.path,
@@ -591,6 +623,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       status: r.status,
       assetCount: r.assetCount,
       evidenceCount: r.evidenceCount,
+      stats: r.stats,
     })),
   };
 }

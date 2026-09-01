@@ -28,12 +28,29 @@ export interface DetectionResult {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Cross-run per-file analysis cache (Milestone 9). Payloads are opaque:
+ * each analyzer defines its own serialized per-file analysis shape.
+ * Keys must incorporate the analyzer id/version, the file content hash
+ * and a signature of the repository file set.
+ */
+export interface AnalysisCache {
+  get(key: string): unknown | undefined;
+  put(key: string, payload: unknown): void;
+}
+
 export interface AnalyzeContext extends DetectContext {
   /** Only files passing config ignore rules are provided. */
   config: {
     analyzers: string[];
     scan: { baseBranch: string; ignore: string[] };
   };
+  /** Repo-relative paths whose content changed since the last scan. */
+  changedFiles?: Set<string>;
+  /** Stable signature of the current file set (changes on add/remove). */
+  fileSetKey?: string;
+  /** Cross-run per-file analysis cache (Milestone 9). */
+  cache?: AnalysisCache;
 }
 
 /** Asset produced by an analyzer; ids are assigned by the platform. */
@@ -70,6 +87,8 @@ export interface AnalyzerResult {
   assets: CodeAssetInput[];
   evidence: EvidenceInput[];
   diagnostics: AnalyzerDiagnostic[];
+  /** Optional per-analyzer counters (e.g. cache hits/misses). */
+  stats?: Record<string, number>;
 }
 
 /** Minimal analyzer interface (docs/ANALYZER_PLUGIN_SPEC.md §2). */

@@ -85,6 +85,14 @@ program
       console.log(`证据：${result.counts.evidence}`);
       console.log(`提交：${result.counts.commits}`);
       console.log('');
+      console.log(`增量：变更 ${result.counts.changedFiles}，缓存命中 ${result.counts.cachedFiles}`);
+      const tsRun = result.runs.find((r) => r.analyzerId === 'typescript');
+      const hits = tsRun?.stats?.['cacheHits'] ?? 0;
+      const misses = tsRun?.stats?.['cacheMisses'] ?? 0;
+      if (hits > 0 || misses > 0) {
+        console.log(`解析：缓存复用 ${hits}，重新解析 ${misses}`);
+      }
+      console.log('');
       console.log('分析器');
       for (const run of result.runs) console.log(`✓ ${run.analyzerId}: ${run.status}`);
 

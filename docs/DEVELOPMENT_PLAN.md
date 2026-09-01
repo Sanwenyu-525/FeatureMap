@@ -249,7 +249,20 @@ A rejected shared-utility candidate never reappears in suggestions;
 an accepted candidate survives rescans and counts toward feature
 health.
 
-## Milestone 9 — Incremental Scan (v0.2.4)
+## Milestone 9 — Incremental Scan (v0.2.4) — ✅ Complete
+
+Status: complete. Cross-run per-file analysis cache
+(`analysis_cache` table, packages/pipeline/src/incremental.ts) keyed
+by `analyzer:version:file hash:file-set signature`; the TypeScript
+analyzer skips file reads and AST walks on cache hits and replays the
+stored per-file evidence (identical by construction — pinned by
+tests). Added/removed files change the file-set signature and degrade
+to full re-analysis, so stale cross-file edges are impossible.
+`counts.changedFiles` / `counts.cachedFiles` and per-analyzer
+`stats.cacheHits`/`cacheMisses` are surfaced through the scan output
+and the CLI. Baseline (docs/reports/benchmark-v0.2.4.md): 1000 files —
+full 1.7s, incremental 0.8s with 1 changed / 1000 cached, meeting the
+v0.2 Performance Gate.
 
 Goal: make rescans fast enough for daily use.
 

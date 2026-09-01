@@ -305,3 +305,16 @@ export const manualOverrides = sqliteTable('manual_overrides', {
   payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
 });
+
+/**
+ * Cross-run per-file analysis cache (Milestone 9, docs/DEVELOPMENT_PLAN.md).
+ * Key = analyzer id:version:file hash:file-set signature; payload is an
+ * opaque analyzer-defined JSON blob. Entries are pruned when the file
+ * set signature changes, so add/remove/deleted files degrade to a full
+ * re-analysis instead of stale edges.
+ */
+export const analysisCache = sqliteTable('analysis_cache', {
+  key: text('key').primaryKey(),
+  payload: text('payload', { mode: 'json' }).$type<unknown>().notNull(),
+  createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+});
