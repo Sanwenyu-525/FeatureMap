@@ -96,6 +96,23 @@ The Web UI consumes feature-oriented APIs and must not implement repository anal
 
 Provides bounded feature context for coding agents.
 
+### 2.8 Context builder (Phase 5)
+
+`packages/context` computes a **read-only projection** of the Feature
+Knowledge Graph: a ranked, budget-aware, evidence-backed
+`FeatureContext` for one feature or one development task
+(`featuremap context <feature>`, MCP `get_feature_context` and friends).
+It composes four stages:
+
+```text
+resolve (graph facts) → rank (tiers + task boost) → budget (tokens) → render
+```
+
+It never writes graph rows and never emits full source bodies; entries
+carry paths, symbols, roles, spans, relations, and evidence. CLI, MCP,
+and future HTTP/IDE surfaces are thin consumers of
+`buildFeatureContext(repoRoot, featureNameOrId, options)`.
+
 ## 3. Dependency boundaries
 
 ### Core
@@ -116,7 +133,9 @@ Plugins may depend on framework parsers and plugin SDK contracts.
 
 ### Consumers
 
-CLI, Web server, and MCP consume core services.
+CLI, Web server, MCP, and the context builder consume core services.
+`packages/context` depends on core + db only, and is consumed by CLI
+and MCP — it must never reverse that direction.
 
 ## 4. Scan lifecycle
 

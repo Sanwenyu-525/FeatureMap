@@ -35,6 +35,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@featuremap/context':
+        specifier: workspace:*
+        version: link:../../packages/context
       '@featuremap/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -156,6 +159,28 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
 
+  packages/context:
+    dependencies:
+      '@featuremap/core':
+        specifier: workspace:*
+        version: link:../core
+      '@featuremap/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^0.38.3
+        version: 0.38.4(@types/better-sqlite3@7.6.13)(@types/react@18.3.31)(better-sqlite3@11.10.0)(react@18.3.1)
+    devDependencies:
+      '@featuremap/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
+      '@featuremap/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
+
   packages/core:
     dependencies:
       yaml:
@@ -196,6 +221,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@featuremap/context':
+        specifier: workspace:*
+        version: link:../context
       '@featuremap/core':
         specifier: workspace:*
         version: link:../core
@@ -206,7 +234,7 @@ importers:
         specifier: workspace:*
         version: link:../pipeline
       '@modelcontextprotocol/sdk':
-        specifier: ^1.0.4
+        specifier: ^1.12.0
         version: 1.30.0(zod@4.5.4)
       drizzle-orm:
         specifier: ^0.38.3

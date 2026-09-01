@@ -121,6 +121,24 @@ Array<{
 }>;
 ```
 
+### Phase 5 context tools (adapter over `@featuremap/context`)
+
+The server is a **thin adapter**: every context tool maps its arguments
+onto `buildFeatureContext(repoRoot, featureId, options)` and shapes the
+result. Business logic (resolve / rank / budget / render) stays in
+`packages/context`. Docs: [docs/context/MCP.md](context/MCP.md).
+
+| Tool | Input | Output |
+| --- | --- | --- |
+| `get_related_code` | `{ featureId, budget?, task?, maxItems? }` | ranked code: entry points + core + dependencies with evidence, plus `recommendedFilesToInspect` |
+| `get_feature_dependencies` | `{ featureId, budget?, includeDependents? }` | `{ dependencies[], dependents[] }` |
+| `get_change_impact` | `{ range?, minimumConfidence? }` | affected features with severity/reasons, shared infrastructure, recommended tests |
+| `get_related_tests` | `{ featureId, budget? }` | `{ tests[] }` (a recommendation, never a coverage claim) |
+| `explain_relation` | `{ featureId, target }` | evidence chain behind one relation |
+
+Errors use the stable envelope `{ error: { code, message } }`
+(e.g. `FEATURE_NOT_FOUND`).
+
 ## 4. Context ranking
 
 `get_feature_context` should prioritize:

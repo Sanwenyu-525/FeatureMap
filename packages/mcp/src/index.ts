@@ -16,11 +16,27 @@ import {
   getFeatureContext,
   getApplicableInstructions,
   getAffectedFeatures,
+  getRelatedCode,
+  getFeatureDependencies,
+  getChangeImpact,
+  getRelatedTests,
+  explainRelation,
   listFeatures,
   type ToolContext,
 } from './tools.js';
 
-export { getFeature, getFeatureContext, getApplicableInstructions, getAffectedFeatures, listFeatures } from './tools.js';
+export {
+  getFeature,
+  getFeatureContext,
+  getApplicableInstructions,
+  getAffectedFeatures,
+  getRelatedCode,
+  getFeatureDependencies,
+  getChangeImpact,
+  getRelatedTests,
+  explainRelation,
+  listFeatures,
+} from './tools.js';
 export type { ToolContext } from './tools.js';
 
 const TOOL_DEFINITIONS = [
@@ -84,6 +100,69 @@ const TOOL_DEFINITIONS = [
       required: ['featureId'],
     },
   },
+  {
+    name: 'get_related_code',
+    description:
+      'Ranked code for a feature: entry points + core implementation + dependencies, each with evidence. Driven by the Phase 5 Context builder (budgeted, tiered).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        featureId: { type: 'string' },
+        budget: { type: 'number', description: 'Token budget (default 8000)' },
+        task: { type: 'string', description: 'Optional task phrase for task-aware ranking' },
+        maxItems: { type: 'number', description: 'Cap on returned code items' },
+      },
+      required: ['featureId'],
+    },
+  },
+  {
+    name: 'get_feature_dependencies',
+    description: 'What this feature depends on (DEPENDS_ON) and — optionally — who depends on it (reverse imports).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        featureId: { type: 'string' },
+        budget: { type: 'number' },
+        includeDependents: { type: 'boolean', description: 'Default true' },
+      },
+      required: ['featureId'],
+    },
+  },
+  {
+    name: 'get_change_impact',
+    description: 'Features affected by the current Git diff (or a commit range), with severity and evidence-backed reasons.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        range: { type: 'string', description: 'Commit range (HEAD, main..HEAD); omit for working tree + branch diff' },
+        minimumConfidence: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'get_related_tests',
+    description: 'Tests associated with a feature (a recommendation derived from the graph, never a coverage claim).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        featureId: { type: 'string' },
+        budget: { type: 'number' },
+      },
+      required: ['featureId'],
+    },
+  },
+  {
+    name: 'explain_relation',
+    description: 'Evidence chain behind one feature↔code relation (why does FeatureMap believe this belongs?).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        featureId: { type: 'string' },
+        target: { type: 'string', description: 'Candidate id / symbol name / evidence source or target id' },
+      },
+      required: ['featureId', 'target'],
+    },
+  },
 ];
 
 export function buildMcpServer(ctx: ToolContext): Server {
@@ -111,8 +190,29 @@ export function buildMcpServer(ctx: ToolContext): Server {
         case 'get_feature_context':
           result = await getFeatureContext(
             ctx,
-            input as { featureId: string; include?: never[]; maxItemsPerSection?: number },
+            input as { featureId: string; include?: never[]; maxItemsPerSection?: number; budget?: number; task?: string },
           );
+          break;
+        case 'get_related_code':
+          result = await getRelatedCode(
+            ctx,
+            input as { featureId: string; budget?: number; task?: string; maxItems?: number },
+          );
+          break;
+        case 'get_feature_dependencies':
+          result = await getFeatureDependencies(
+            ctx,
+            input as { featureId: string; budget?: number; includeDependents?: boolean },
+          );
+          break;
+        case 'get_change_impact':
+          result = await getChangeImpact(ctx, input as { range?: string; minimumConfidence?: number });
+          break;
+        case 'get_related_tests':
+          result = await getRelatedTests(ctx, input as { featureId: string; budget?: number });
+          break;
+        case 'explain_relation':
+          result = await explainRelation(ctx, input as { featureId: string; target: string });
           break;
         case 'get_affected_features':
           result = await getAffectedFeatures(ctx, input as { base?: string; minimumConfidence?: number });
