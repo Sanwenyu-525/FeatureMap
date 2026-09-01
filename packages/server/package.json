@@ -1,0 +1,31 @@
+{
+  "name": "@featuremap/server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap local Fastify API (docs/API_SPEC.md).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*",
+    "@featuremap/db": "workspace:*",
+    "@featuremap/pipeline": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "vitest": "^2.1.8"
+  }
+}

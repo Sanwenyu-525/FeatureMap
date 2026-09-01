@@ -1,0 +1,30 @@
+{
+  "name": "@featuremap/pipeline",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap scan pipeline: scan, analyze, collect git facts, persist evidence.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "echo \"no pipeline tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@featuremap/analyzer": "workspace:*",
+    "@featuremap/core": "workspace:*",
+    "@featuremap/db": "workspace:*",
+    "@featuremap/scanner": "workspace:*",
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*"
+  }
+}

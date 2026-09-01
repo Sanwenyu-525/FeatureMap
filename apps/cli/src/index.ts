@@ -17,7 +17,7 @@ import {
   loadConfig,
   type ConfigIssue,
 } from '@featuremap/core';
-import { runScan } from './scan-runner.js';
+import { runScan } from '@featuremap/pipeline';
 
 const program = new Command();
 
@@ -93,9 +93,24 @@ program
 program
   .command('dev')
   .description('Start the local API and Web UI.')
-  .action(() => {
-    console.error('dev: not implemented yet (Milestone 3 — Local Web UI).');
-    process.exitCode = 1;
+  .action(async () => {
+    try {
+      const repoRoot = process.cwd();
+      const loaded = loadConfig(repoRoot);
+      if (!loaded.config) {
+        const first = loaded.issues.find((i) => i.level === 'error') ?? loaded.issues[0];
+        console.error(first ? `${first.code}: ${first.message}` : 'Invalid configuration');
+        process.exitCode = 1;
+        return;
+      }
+      const { startServer } = await import('@featuremap/server');
+      const { port } = await startServer({ repoRoot });
+      console.log(`FeatureMap API listening on http://127.0.0.1:${port}/api`);
+      console.log('Press Ctrl+C to stop.');
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
   });
 
 program

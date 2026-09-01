@@ -1,0 +1,95 @@
+/**
+ * Local API contract tests — docs/API_SPEC.md contracts exercised
+ * end-to-end: pipeline scan → SQLite → Fastify responses.
+ */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { runScan } from '@featuremap/pipeline';
+import { buildServer } from '../src/app.js';
+
+const fixtureRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  'test-fixtures',
+  'react-express-basic',
+);
+
+let dbPath: string;
+let app: ReturnType<typeof buildServer>;
+
+beforeAll(async () => {
+  dbPath = join(mkdtempSync(join(tmpdir(), 'featuremap-api-')), 'featuremap.db');
+  await runScan(fixtureRoot, { dbPath });
+  app = buildServer({ repoRoot: fixtureRoot, dbPath });
+});
+
+afterAll(async () => {
+  await app.close();
+  rmSync(dirname(dbPath), { recursive: true, force: true });
+});
+
+describe('GET /api/project', () => {
+  it('returns project metadata with technologies', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/project' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { name: string; technologies: unknown[] };
+    expect(body.name).toBe('react-express-basic');
+    expect(body.technologies.length).toBeGreaterThan(0);
+  });
+});
+
+describe('GET /api/overview', () => {
+  it('returns counts from the scan', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/overview' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { counts: Record<string, number> };
+    expect(body.counts.files).toBeGreaterThan(0);
+    expect(body.counts.endpoints).toBe(2);
+    expect(body.counts.documents).toBe(1);
+  });
+});
+
+describe('GET /api/features', () => {
+  it('returns an empty list before feature discovery (Milestone 2)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/features' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+  });
+});
+
+describe('GET /api/features/:id', () => {
+  it('returns the documented FEATURE_NOT_FOUND error envelope', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/features/nope' });
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('FEATURE_NOT_FOUND');
+  });
+});
+
+describe('GET /api/changes', () => {
+  it('returns the change set shape with empty affected features', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/changes' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { changedFiles: unknown[]; affectedFeatures: unknown[]; baseBranch: string };
+    expect(body.changedFiles).toEqual([]); // fixture working tree is clean
+    expect(body.affectedFeatures).toEqual([]);
+    expect(body.baseBranch).toBe('main');
+  });
+});
+
+describe('GET /api/analyzers', () => {
+  it('reports the analyzer runs of the latest scan', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/analyzers' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Array<{ analyzerId: string; status: string }>;
+    const ids = body.map((a) => a.analyzerId);
+    expect(ids).toContain('typescript');
+    expect(ids).toContain('express');
+    expect(ids).toContain('prisma');
+  });
+});
