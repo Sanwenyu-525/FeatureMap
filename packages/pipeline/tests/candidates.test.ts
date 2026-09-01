@@ -180,18 +180,41 @@ describe('resolveAnchors', () => {
     },
   ];
 
-  it('resolves route anchors to file and handler symbol nodes', () => {
+  it('route anchors resolve to the handler symbol, not the hub registration file', () => {
     const anchors = resolveAnchors(
       [{ featureId: 'feature:login', name: 'POST /api/login' }],
       [],
       evidence,
     );
-    expect(anchors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ nodeType: 'file', nodeId: 'src/server.ts' }),
-        expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/server.ts:loginHandler' }),
-      ]),
+    // Only the handler — a hub file registering many resources must not
+    // pull other features' chains in through its imports.
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0]).toEqual({
+      featureId: 'feature:login',
+      nodeType: 'symbol',
+      nodeId: 'src/server.ts:loginHandler',
+      source: 'route',
+    });
+  });
+
+  it('inline-handler endpoints fall back to the registration file anchor', () => {
+    const anchors = resolveAnchors(
+      [{ featureId: 'feature:login', name: 'POST /api/ping' }],
+      [],
+      [
+        {
+          sourceType: 'endpoint',
+          sourceId: 'endpoint:POST /api/ping',
+          relationType: 'ROUTES_TO',
+          targetType: 'file',
+          targetId: 'src/ping.ts',
+          confidence: 1.0,
+        },
+      ],
     );
+    expect(anchors).toEqual([
+      { featureId: 'feature:login', nodeType: 'file', nodeId: 'src/ping.ts', source: 'route' },
+    ]);
   });
 
   it('resolves declared file/symbol/route anchors', () => {
@@ -208,7 +231,7 @@ describe('resolveAnchors', () => {
       expect.arrayContaining([
         expect.objectContaining({ nodeType: 'file', nodeId: 'src/login/page.tsx', source: 'file' }),
         expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/auth.ts:login', source: 'symbol' }),
-        expect.objectContaining({ nodeType: 'file', nodeId: 'src/server.ts', source: 'route' }),
+        expect.objectContaining({ nodeType: 'symbol', nodeId: 'src/server.ts:loginHandler', source: 'route' }),
       ]),
     );
   });

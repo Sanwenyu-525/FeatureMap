@@ -1,0 +1,6 @@
+{
+  "name": "cross-feature-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Ground-truth fixture 06: two features (login/logout) sharing one session-service boundary file and one user repository; symbol-level candidates must separate the features where file-level closure cannot."
+}

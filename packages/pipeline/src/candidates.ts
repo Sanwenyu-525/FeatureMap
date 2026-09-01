@@ -157,6 +157,19 @@ export function expandCandidates(
   relational.sort(byEdge);
   structural.sort(byEdge);
 
+  /**
+   * Symbol candidate eligibility (docs/releases/v0.2-acceptance.md §2,
+   * cross-feature boundary rule): a symbol is a candidate for a feature
+   * only when a relational edge (CALLS / component usage) pointing at
+   * it starts from a node that feature's traversal actually reaches —
+   * per feature, never globally. CONTAINS is a traversal channel: a
+   * shared boundary file's other symbols are not pulled into the
+   * feature just because the file is.
+   */
+  const relationalSymbolEdges = relational
+    .filter((e) => e.to.startsWith('symbol:'))
+    .map((e) => ({ from: e.from, to: e.to }));
+
   const outgoing = new Map<string, GraphEdge[]>();
   for (const edge of [...relational, ...structural]) {
     const list = outgoing.get(edge.from) ?? [];
@@ -213,10 +226,30 @@ export function expandCandidates(
   // ---- Materialize candidates ------------------------------------------
   const candidates: CandidateRelation[] = [];
   for (const [featureId, featureStates] of states) {
+    // Per-feature eligibility: a relational edge into a symbol counts
+    // only when its source is inside THIS feature's reachable set.
+    const eligibleSymbols = new Set(
+      relationalSymbolEdges
+        .filter((e) => featureStates.has(e.from))
+        .map((e) => e.to),
+    );
     for (const [node, state] of featureStates) {
       const targetType: 'file' | 'symbol' = node.startsWith('symbol:') ? 'symbol' : 'file';
       const targetId = node.slice(targetType.length + 1);
       const isAnchor = state.distance === 0 && state.chain.length === 0;
+      // Boundary rule: symbols reached only through CONTAINS at distance
+      // > 0 (their containing file was pulled in transitively) need a
+      // relational edge of their own — from this feature's own reached
+      // set. Symbols of anchor files themselves (distance 0) are part
+      // of the anchor.
+      if (
+        targetType === 'symbol' &&
+        !isAnchor &&
+        state.distance > 0 &&
+        !eligibleSymbols.has(node)
+      ) {
+        continue;
+      }
       const score = isAnchor
         ? 1
         : Math.min(
@@ -272,10 +305,10 @@ export function resolveAnchors(
   const resolveRoute = (featureId: string, name: string): void => {
     const sourceIds = [`endpoint:${name}`, `cli_command:${name}`];
     for (const sourceId of sourceIds) {
-      const route = routeTargets.get(`ROUTES_TO|${sourceId}`);
-      if (route) {
-        anchors.push({ featureId, nodeType: 'file', nodeId: route.targetId, source: 'route' });
-      }
+      // The handler symbol is the feature's entry. The file that merely
+      // registers the route is NOT an anchor: a hub file registering
+      // many resources would otherwise pull every other feature's chain
+      // into this one (same insight as the discovery-side hub rule).
       const handler = routeTargets.get(`HANDLED_BY|${sourceId}`);
       if (handler) {
         anchors.push({
@@ -284,6 +317,13 @@ export function resolveAnchors(
           nodeId: stripSymbolPrefix(handler.targetId),
           source: 'route',
         });
+        continue;
+      }
+      // Inline handlers have no symbol — the registration file proves
+      // implementation and becomes the anchor.
+      const route = routeTargets.get(`ROUTES_TO|${sourceId}`);
+      if (route) {
+        anchors.push({ featureId, nodeType: 'file', nodeId: route.targetId, source: 'route' });
       }
     }
   };

@@ -1,0 +1,37 @@
+# Ground truth — docs/releases/v0.2-acceptance.md §2/§11 (monorepo).
+#
+# `@company/auth/*` resolves through the root tsconfig paths to the real
+# package sources. The two same-named `utils.ts` files (one per
+# workspace) verify workspace identity: neither is imported by the
+# feature, so neither may surface as a candidate or collide with the
+# other.
+feature: login
+pattern: Authentication
+
+anchors:
+  - type: endpoint
+    target: POST /api/login
+  - type: file
+    target: apps/web/src/login/page.tsx
+
+expected:
+  - loginHandler
+  - login
+  - AuthService.login
+  - UserRepository.findByEmail
+  - LoginPage
+
+notExpected:
+  - formatWebDate
+  - formatAuthDate
+
+expectedFiles:
+  - apps/web/src/server.ts
+  - apps/web/src/login/handler.ts
+  - packages/auth/src/login.ts
+  - packages/auth/src/auth-service.ts
+  - packages/auth/src/user-repository.ts
+
+notExpectedFiles:
+  - apps/web/src/utils.ts
+  - packages/auth/src/utils.ts

@@ -52,8 +52,24 @@ export interface IgnoreMatcher {
   matches(path: string): boolean;
 }
 
+/**
+ * Compile rules for path matching. Every non-rooted rule additionally
+ * gets a prefixed star-star variant so that e.g. `node_modules/**`
+ * also matches `frontend/node_modules/...` — build and dependency
+ * directories appear at any depth in real repositories (found during
+ * the v0.2 real-project measurement: nested node_modules and .venv
+ * were being hashed wholesale).
+ */
 export function createIgnoreMatcher(rules: string[]): IgnoreMatcher {
-  const compiled = rules.map(ignoreRuleToRegExp);
+  const compiled: RegExp[] = [];
+  for (const rule of rules) {
+    const normalized = rule.trim().replace(/^\//, '').replace(/\/$/, '');
+    if (normalized === '') continue;
+    compiled.push(ignoreRuleToRegExp(normalized));
+    if (!normalized.startsWith('**/') && !normalized.startsWith('*')) {
+      compiled.push(ignoreRuleToRegExp(`**/${normalized}`));
+    }
+  }
   return {
     rules: compiled,
     matches(path: string): boolean {

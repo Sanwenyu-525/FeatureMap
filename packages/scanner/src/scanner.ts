@@ -11,8 +11,10 @@ import type { DocumentType } from '@featuremap/core';
 import { createIgnoreMatcher } from './ignore.js';
 import { hashContent } from './hash.js';
 
-/** Directories never scanned, regardless of configuration (SECURITY.md). */
-const ALWAYS_IGNORED = ['.git', '.featuremap', 'node_modules'];
+/** Directories never scanned, regardless of configuration (SECURITY.md).
+ *  Matched at ANY depth: real repositories nest node_modules/.git inside
+ *  workspaces (found during the v0.2 real-project measurement). */
+const ALWAYS_IGNORED = new Set(['.git', '.featuremap', 'node_modules']);
 
 const LANGUAGE_BY_EXT = new Map<string, string>([
   ['.ts', 'TypeScript'],
@@ -100,6 +102,9 @@ function walkFiles(
     return; // Unreadable directories are skipped, never fatal (AGENTS.md §3.5).
   }
   for (const entry of entries) {
+    // Subtree pruning for always-ignored directory names at any depth
+    // (node_modules/.git/.featuremap) — never descend into them.
+    if (entry.isDirectory() && ALWAYS_IGNORED.has(entry.name)) continue;
     const rel = join(dir, entry.name).slice(rootDir.length + 1).replace(/\\/g, '/');
     if (matcher.matches(rel)) continue;
     const abs = join(dir, entry.name);
@@ -160,7 +165,10 @@ export function scanRepository(repoRoot: string, options: ScanOptions = {}): Sca
     throw new Error(`Repository root not found: ${root}`);
   }
 
-  const rules = [...ALWAYS_IGNORED.map((d) => `${d}/**`), ...(options.ignore ?? [])];
+  // createIgnoreMatcher adds a nested `**/dir` variant for every rule,
+  // so both always-ignored and user-configured directories are pruned
+  // at any repository depth.
+  const rules = [...ALWAYS_IGNORED].map((d) => `${d}/**`).concat(options.ignore ?? []);
   const matcher = createIgnoreMatcher(rules);
 
   const relPaths: string[] = [];

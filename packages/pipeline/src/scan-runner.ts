@@ -7,6 +7,7 @@
  * (`scan`) and the local API (`POST /scan`).
  */
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { loadConfig, DEFAULT_FEATURE_HEALTH } from '@featuremap/core';
@@ -17,6 +18,7 @@ import {
   assetId,
   evidenceId,
   collectGitInfo,
+  loadModuleResolution,
   WORKING_TREE_SHA,
   BRANCH_DIFF_SHA,
   type PlatformOutput,
@@ -148,8 +150,10 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // ---- Incremental analysis inputs (Milestone 9) ---------------------------
   // The store opens before analysis: previous file hashes feed changed-file
   // detection and the analysis cache persists across runs. Cache keys
-  // include the file-set signature, so added/removed files degrade to a
-  // full re-analysis instead of stale edges.
+  // include the file-set signature (plus the tsconfig hash, because alias
+  // resolution changes cross-file edges without touching file contents),
+  // so structural or config changes degrade to a full re-analysis instead
+  // of stale edges.
   const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
   const { db, sqlite } = openDatabase(dbPath);
   const previousHashes = new Map(
@@ -162,8 +166,6 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   const changedFilePaths = new Set(
     scan.files.filter((f) => previousHashes.get(f.path) !== f.hash).map((f) => f.path),
   );
-  const fileSetKey = fileSetKeyOf(scan.files.map((f) => f.path));
-  const analysisCache = new SqliteAnalysisCache(db);
 
   // Step 7: deterministic analyzers (failures isolated per analyzer)
   const readFile = (rel: string): string | undefined => {
@@ -173,6 +175,15 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       return undefined;
     }
   };
+  const moduleResolution = loadModuleResolution(readFile);
+  const moduleResolutionKey =
+    moduleResolution === undefined ? '' : createHash('sha256').update(JSON.stringify(moduleResolution)).digest('hex').slice(0, 12);
+  const fileSetKey = fileSetKeyOf([
+    ...scan.files.map((f) => f.path),
+    `tsconfig:${moduleResolutionKey}`,
+  ]);
+  const analysisCache = new SqliteAnalysisCache(db);
+
   const enabledSet = new Set<string>(config.analyzers.enabled);
   const plugins = builtInAnalyzers.filter((p) => enabledSet.has(p.id));
   const output = await runAnalyzers(
@@ -185,6 +196,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       changedFiles: changedFilePaths,
       fileSetKey,
       cache: analysisCache,
+      moduleResolution,
     },
     scan.files,
   );
@@ -218,6 +230,8 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   const discoveredIds = new Set(discovered.map((f) => f.id));
   for (const anchor of declaredAnchors) {
     if (discoveredIds.has(anchor.featureId)) continue;
+    // Mark immediately: several anchors may share one feature.
+    discoveredIds.add(anchor.featureId);
     const name = anchor.featureId.slice('feature:'.length);
     discovered.push({
       id: anchor.featureId,
@@ -238,6 +252,14 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   );
   const anchorNodes = resolveAnchors(endpointAnchors, declaredAnchors, output.evidence);
   const candidates = expandCandidates(anchorNodes, output.evidence);
+
+  // The markdown analyzer's document judgment can be wider than the
+  // scanner's document inventory; feature↔document joins must reference
+  // rows that exist (surfaced by the AI_Manga real-project scan).
+  const documentPaths = new Set(scan.documents.map((d) => d.path));
+  for (const feature of discovered) {
+    feature.documents = feature.documents.filter((d) => documentPaths.has(d));
+  }
 
   const fileAssetId = (path: string): string =>
     assetId({ type: isTestPath(path) ? 'test' : 'file', path });

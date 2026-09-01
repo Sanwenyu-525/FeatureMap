@@ -1,0 +1,59 @@
+{
+  "comment": "B-class rough ground truth: AI_Manga_Drama_Studio frontend. Expected files = the feature's own directory members (directory-as-boundary labeling); cross-feature leakage is checked via notExpected. Shared layers (stores/, api/, lib/) will surface as unclassified and are reported as such.",
+  "repo": "D:/Develop/AI_Manga_Drama_Studio",
+  "features": [
+    {
+      "feature": "generation",
+      "expectedFiles": [
+        "frontend/src/features/generation/GenerationQueue.tsx",
+        "frontend/src/features/generation/batchSubmit.ts",
+        "frontend/src/features/generation/generationTypeText.ts"
+      ],
+      "notExpectedFiles": [
+        "frontend/src/features/pipeline/PipelineBar.tsx",
+        "frontend/src/features/settings/SettingsPage.tsx",
+        "frontend/src/features/storyboard/StoryboardView.tsx"
+      ]
+    },
+    {
+      "feature": "pipeline",
+      "expectedFiles": ["frontend/src/features/pipeline/PipelineBar.tsx"],
+      "notExpectedFiles": [
+        "frontend/src/features/generation/GenerationQueue.tsx",
+        "frontend/src/features/settings/SettingsPage.tsx",
+        "frontend/src/features/storyboard/StoryboardView.tsx"
+      ]
+    },
+    {
+      "feature": "settings",
+      "expectedFiles": [
+        "frontend/src/features/settings/SettingsPage.tsx",
+        "frontend/src/features/settings/ProjectSettingsModal.tsx",
+        "frontend/src/features/settings/DirectoryBrowserModal.tsx"
+      ],
+      "notExpectedFiles": [
+        "frontend/src/features/generation/GenerationQueue.tsx",
+        "frontend/src/features/pipeline/PipelineBar.tsx",
+        "frontend/src/features/storyboard/StoryboardView.tsx"
+      ]
+    },
+    {
+      "feature": "storyboard",
+      "expectedFiles": [
+        "frontend/src/features/storyboard/StoryboardView.tsx",
+        "frontend/src/features/storyboard/ShotInspector.tsx",
+        "frontend/src/features/storyboard/BatchActionBar.tsx",
+        "frontend/src/features/storyboard/GenerationEnginePicker.tsx",
+        "frontend/src/features/storyboard/ReferenceImagePicker.tsx",
+        "frontend/src/features/storyboard/ShotThumbImage.tsx",
+        "frontend/src/features/storyboard/VersionReviewPage.tsx",
+        "frontend/src/features/storyboard/useVirtualizedGrid.ts"
+      ],
+      "notExpectedFiles": [
+        "frontend/src/features/generation/GenerationQueue.tsx",
+        "frontend/src/features/pipeline/PipelineBar.tsx",
+        "frontend/src/features/settings/SettingsPage.tsx"
+      ]
+    }
+  ]
+}

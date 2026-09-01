@@ -1,0 +1,7 @@
+project:
+  name: cross-feature
+
+scan:
+  ignore:
+    - .env
+    - .env.*
