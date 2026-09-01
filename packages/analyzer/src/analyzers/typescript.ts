@@ -22,13 +22,30 @@ import type {
 import { emptyResult } from '@featuremap/plugin-sdk';
 
 const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
-const RESOLVE_SUFFIXES = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js'];
 
 export const symbolId = (path: string, name: string): string => `symbol:${path}:${name}`;
 
 function isScriptFile(path: string): boolean {
   const lower = path.toLowerCase();
   return SCRIPT_EXTENSIONS.some((ext) => lower.endsWith(ext)) && !lower.endsWith('.d.ts');
+}
+
+/**
+ * TS/ESM style imports write `.js` while the on-disk file is `.ts`
+ * (NodeNext resolution). Expand each candidate base into the
+ * equivalent TypeScript and JavaScript spellings.
+ */
+function candidatePaths(base: string): string[] {
+  const candidates: string[] = [base];
+  if (base.endsWith('.js')) {
+    candidates.push(base.slice(0, -3) + '.ts', base.slice(0, -3) + '.tsx');
+  } else if (base.endsWith('.jsx')) {
+    candidates.push(base.slice(0, -4) + '.tsx', base.slice(0, -4) + '.ts');
+  }
+  for (const suffix of ['/index.ts', '/index.tsx', '/index.js']) {
+    candidates.push(base + suffix);
+  }
+  return candidates;
 }
 
 /** Resolve a relative import specifier to a scanned repository file. */
@@ -39,8 +56,7 @@ export function resolveSpecifier(
 ): string | undefined {
   if (!specifier.startsWith('.')) return undefined;
   const base = normalizePath(join(dirname(fromPath), specifier).replace(/\\/g, '/'));
-  for (const suffix of RESOLVE_SUFFIXES) {
-    const candidate = base + suffix;
+  for (const candidate of candidatePaths(base)) {
     if (fileSet.has(candidate)) return candidate;
   }
   return undefined;
