@@ -1,0 +1,31 @@
+{
+  "name": "@featuremap/db",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap local SQLite store (Drizzle ORM).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*",
+    "better-sqlite3": "^11.8.0",
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "@types/better-sqlite3": "^7.6.12",
+    "drizzle-kit": "^0.30.2",
+    "vitest": "^2.1.8"
+  }
+}

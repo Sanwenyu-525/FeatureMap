@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# FeatureMap runtime/cache directory
+.featuremap/
+featuremap.yaml
+
+# Environment and secrets (see SECURITY.md)
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+.credentials/
+.aws/
+.gnupg/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/

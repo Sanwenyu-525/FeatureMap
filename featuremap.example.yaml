@@ -1,0 +1,40 @@
+project:
+  name: featuremap-demo
+
+scan:
+  baseBranch: main
+  ignore:
+    - node_modules/**
+    - dist/**
+    - build/**
+    - coverage/**
+    - .next/**
+    - .git/**
+    - .env
+    - .env.*
+
+analyzers:
+  enabled:
+    - typescript
+    - react
+    - nextjs
+    - vue
+    - express
+    - nestjs
+    - prisma
+    - markdown
+
+features:
+  # Optional explicit seeds. Automatic discovery remains enabled.
+  seeds: []
+
+llm:
+  enabled: true
+  # Provider-specific credentials must come from environment variables.
+  provider: openai
+
+web:
+  port: 7331
+
+impact:
+  minimumConfidence: 0.65
