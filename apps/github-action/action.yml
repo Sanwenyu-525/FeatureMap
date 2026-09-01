@@ -5,8 +5,15 @@ inputs:
     description: 'GitHub token with checks:write permission (e.g. the GITHUB_TOKEN secret)'
     required: true
 runs:
-  using: 'node24'
-  main: 'dist/index.js'
-branding:
-  icon: 'activity'
-  color: 'blue'
+  using: 'composite'
+  steps:
+    - name: Run FeatureMap analysis
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+      # Composite action: run the existing CLI in the workspace where
+      # node_modules and the native better-sqlite3 binding resolve
+      # normally (no fragile bundling of ESM/native deps).
+      run: node "${{ github.action_path }}/../../cli/dist/index.js" gh check
