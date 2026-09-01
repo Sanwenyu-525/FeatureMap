@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, type FeatureDetail } from '../api/client';
 import { ErrorNotice, PageTitle } from './shared';
+import FeatureFlowView from './FeatureFlowView';
 
 export default function FeatureDetailPage() {
   const { id = '' } = useParams();
   const [feature, setFeature] = useState<FeatureDetail | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [view, setView] = useState<'flow' | 'lists'>('flow');
 
   useEffect(() => {
     setFeature(null);
@@ -54,7 +56,23 @@ export default function FeatureDetailPage() {
           ))}
         </div>
       ) : null}
-      <section className="grid gap-6 lg:grid-cols-2">
+      <div className="mb-4 flex gap-2">
+        {(['flow', 'lists'] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+              view === v ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {v === 'flow' ? 'Product flow' : 'Engineering view'}
+          </button>
+        ))}
+      </div>
+      {view === 'flow' ? (
+        <FeatureFlowView feature={feature} />
+      ) : (
+        <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-medium text-slate-700">Implementation assets</h2>
           {feature.assets.length === 0 ? (
@@ -77,13 +95,14 @@ export default function FeatureDetailPage() {
             <ul className="space-y-1 font-mono text-xs text-slate-600">
               {feature.evidence.map((e) => (
                 <li key={e.id}>
-                  {e.sourceId} → {e.relationType} → {e.targetId} ({e.confidence})
+                  {e.sourceId} → {e.relationType} → {e.targetId} ({e.confidence}, {e.analyzerId})
                 </li>
               ))}
             </ul>
           )}
         </div>
       </section>
+      )}
     </>
   );
 }

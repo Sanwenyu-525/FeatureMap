@@ -7,6 +7,7 @@
 import { eq, desc, sql } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
@@ -69,11 +70,19 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   const { db, sqlite } = openDatabase(dbPath);
 
   // Serve the built Web UI when present (docs/MVP_SPEC.md §6: featuremap
-  // dev starts the local API *and* Web UI). Vite dev proxies /api in
-  // development; in production the same origin serves both.
-  const webDist = join(options.repoRoot, 'apps', 'web', 'dist');
+  // dev starts the local API *and* Web UI). The dist folder lives in the
+  // FeatureMap installation, not in the scanned repository.
+  const webDist = join(fileURLToPath(new URL('../../../apps/web/dist', import.meta.url)));
   if (existsSync(join(webDist, 'index.html'))) {
     app.register(fastifyStatic, { root: webDist, prefix: '/' });
+    // SPA fallback: client-side routes (e.g. /features) resolve to the app.
+    // Unknown /api paths keep the JSON error envelope (docs/API_SPEC.md §4).
+    app.setNotFoundHandler(async (req, reply) => {
+      if (req.url.startsWith('/api/')) {
+        return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Unknown API route.' } });
+      }
+      return reply.type('text/html').sendFile('index.html');
+    });
   }
 
   app.get('/api/project', async (_req, reply) => {
