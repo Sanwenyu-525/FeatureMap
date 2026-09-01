@@ -31,19 +31,49 @@ import {
   type SymbolSpan,
 } from './git/index.js';
 
+export type ImpactSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
+
 export interface AffectedFeature {
   featureId: string;
   featureName: string;
   confidence: number;
+  /**
+   * Severity band (ADR-0004 §3): HIGH = a changed symbol is owned by
+   * the feature; MEDIUM = the feature DEPENDS_ON a changed file/symbol
+   * (1 hop) or a changed file is in the closure without a symbol-level
+   * match; LOW = other surfaceable hits. Bands are rule-based and every
+   * feature keeps its reasons (AGENTS.md §7: no opaque percentages).
+   */
+  severity: ImpactSeverity;
   reasons: string[];
   tests: string[];
   documents: string[];
 }
 
+/** Shared infrastructure that must not be attributed to any feature (ADR-0004 §4). */
+export interface SharedInfrastructureChange {
+  path: string;
+  changeType: string;
+  dependentFeatureCount: number;
+  reason: string;
+}
+
+/** Below-threshold hits surfaced as explicit uncertainty (ADR-0004 §3). */
+export interface SuppressedUncertainty {
+  featureId: string;
+  featureName?: string;
+  confidence: number;
+  reason: string;
+}
+
 export interface ImpactResult {
   changedFiles: Array<{ path: string; changeType: string; commitSha: string }>;
-  /** Ranked by confidence; below-threshold evidence is excluded. */
+  /** Ranked by severity then confidence; below-threshold evidence is excluded. */
   affectedFeatures: AffectedFeature[];
+  /** Changed shared infrastructure (fan-in ≥ 3 features), not attributed. */
+  sharedInfrastructure: SharedInfrastructureChange[];
+  /** Hits that did not reach the surfaceable threshold, kept visible. */
+  suppressedUncertainty: SuppressedUncertainty[];
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
   currentBranch?: string;
   baseBranch?: string;
@@ -52,6 +82,30 @@ export interface ImpactResult {
 /** Confidence penalties per traversal distance (docs/DATA_MODEL.md §4). */
 const DIRECT_CONFIDENCE = 1.0;
 const TRANSITIVE_CONFIDENCE = 0.8;
+
+/**
+ * Fan-in threshold for shared infrastructure (ADR-0004 §4, same
+ * semantics as the ADR-0003 §5 fan-in penalty): a changed file depended
+ * on by this many features is listed as shared infrastructure instead
+ * of being attributed to any single feature.
+ */
+const SHARED_INFRA_FAN_IN = 3;
+
+/**
+ * Rule-based severity inference from the emission reasons (ADR-0004 §3).
+ * HIGH requires a symbol-level match on a directly owned file; MEDIUM
+ * covers direct closure hits and 1-hop DEPENDS_ON; LOW is the fallback
+ * for other surfaceable hits.
+ */
+function severityOf(reasons: ReadonlySet<string>): ImpactSeverity {
+  if ([...reasons].some((r) => r.includes('belongs to this feature') && r.includes('changed symbol(s)'))) {
+    return 'HIGH';
+  }
+  if ([...reasons].some((r) => r.includes('belongs to this feature') || r.includes('imports'))) {
+    return 'MEDIUM';
+  }
+  return 'LOW';
+}
 
 export interface ImpactOptions {
   /** Commit range (ADR-0004 §1); omitted keeps working-tree + branch-diff. */
@@ -128,6 +182,39 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
     const features = new Map(db.select().from(schema.features).all().map((f) => [f.id, f]));
     const scores = new Map<string, { confidence: number; reasons: Set<string> }>();
 
+    // path → owning feature ids (direct membership, for fan-in counting).
+    const ownersByPath = new Map<string, string[]>();
+    for (const [featureId, entries] of membership) {
+      for (const entry of entries) {
+        const list = ownersByPath.get(entry.path) ?? [];
+        if (!list.includes(featureId)) list.push(featureId);
+        ownersByPath.set(entry.path, list);
+      }
+    }
+
+    // Shared infrastructure isolation (ADR-0004 §4): a changed file that
+    // has no direct feature owner but is depended on by ≥ SHARED_INFRA_FAN_IN
+    // features is listed separately and never attributed to a feature —
+    // this is what keeps "Logger changed" from listing 47 features.
+    const sharedInfrastructure: SharedInfrastructureChange[] = [];
+    const sharedPaths = new Set<string>();
+    const changeTypeByPath = new Map(changedFiles.map((c) => [c.path, c.changeType]));
+    for (const changed of [...changedPaths].sort()) {
+      if ((ownersByPath.get(changed) ?? []).length > 0) continue; // owned → normal impact
+      const dependentFeatures = new Set<string>();
+      for (const dependent of dependents.get(changed) ?? []) {
+        for (const fid of ownersByPath.get(dependent) ?? []) dependentFeatures.add(fid);
+      }
+      if (dependentFeatures.size < SHARED_INFRA_FAN_IN) continue;
+      sharedPaths.add(changed);
+      sharedInfrastructure.push({
+        path: changed,
+        changeType: changeTypeByPath.get(changed) ?? 'modified',
+        dependentFeatureCount: dependentFeatures.size,
+        reason: `depended on by ${dependentFeatures.size} features (fan-in ≥ ${SHARED_INFRA_FAN_IN}) and owned by none`,
+      });
+    }
+
     const bump = (featureId: string, confidence: number, reason: string): void => {
       const current = scores.get(featureId);
       if (current) {
@@ -139,6 +226,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
     };
 
     for (const changed of changedPaths) {
+      if (sharedPaths.has(changed)) continue;
       const symbolNote = changedSymbolNote(changed);
       // Hop 1 — direct membership.
       for (const [featureId, entries] of membership) {
@@ -168,11 +256,26 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
       }
     }
 
-    // Rank and surface; below-threshold evidence stays internal
-    // (docs/DATA_MODEL.md §4).
+    // Rank and surface; below-threshold evidence stays visible as
+    // explicit uncertainty instead of vanishing (ADR-0004 §3).
+    const SEVERITY_RANK: Record<ImpactSeverity, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+    const suppressedUncertainty: SuppressedUncertainty[] = [...scores.entries()]
+      .filter(([, s]) => !isSurfaceable(s.confidence))
+      .map(([featureId, s]) => ({
+        featureId,
+        featureName: features.get(featureId)?.name,
+        confidence: s.confidence,
+        reason: [...s.reasons][0] ?? '',
+      }))
+      .sort((a, b) => b.confidence - a.confidence);
+
     const affectedFeatures: AffectedFeature[] = [...scores.entries()]
       .filter(([, s]) => isSurfaceable(s.confidence))
-      .sort((a, b) => b[1].confidence - a[1].confidence)
+      .sort((a, b) => {
+        const sa = severityOf(a[1].reasons);
+        const sb = severityOf(b[1].reasons);
+        return SEVERITY_RANK[sa] - SEVERITY_RANK[sb] || b[1].confidence - a[1].confidence;
+      })
       .flatMap(([featureId, s]) => {
         const feature = features.get(featureId);
         if (!feature) return [];
@@ -200,6 +303,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
             featureId,
             featureName: feature.name,
             confidence: s.confidence,
+            severity: severityOf(s.reasons),
             reasons: [...s.reasons],
             tests: featureTests,
             documents: featureDocs,
@@ -232,6 +336,8 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
     return {
       changedFiles,
       affectedFeatures,
+      sharedInfrastructure,
+      suppressedUncertainty,
       potentiallyStaleDocuments: [...staleDocs.entries()].map(([path, reason]) => ({ path, reason })),
       currentBranch: stats.currentBranch,
       baseBranch: config?.scan.baseBranch,

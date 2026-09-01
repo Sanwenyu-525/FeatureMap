@@ -276,8 +276,11 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
         featureId: f.featureId,
         featureName: f.featureName,
         confidence: f.confidence,
+        severity: f.severity,
         reasons: f.reasons,
       })),
+      sharedInfrastructure: impact.sharedInfrastructure,
+      suppressedUncertainty: impact.suppressedUncertainty,
       potentiallyStaleDocuments: impact.potentiallyStaleDocuments,
     };
     return body;

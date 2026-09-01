@@ -111,7 +111,22 @@ export interface ChangesResponse {
     featureId: string;
     featureName: string;
     confidence: number;
+    severity: 'HIGH' | 'MEDIUM' | 'LOW';
     reasons: string[];
+  }>;
+  /** Changed shared infrastructure (ADR-0004 §4), not attributed to features. */
+  sharedInfrastructure: Array<{
+    path: string;
+    changeType: string;
+    dependentFeatureCount: number;
+    reason: string;
+  }>;
+  /** Below-threshold hits surfaced as uncertainty (ADR-0004 §3). */
+  suppressedUncertainty: Array<{
+    featureId: string;
+    featureName?: string;
+    confidence: number;
+    reason: string;
   }>;
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
 }

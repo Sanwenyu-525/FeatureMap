@@ -165,14 +165,33 @@ program
       }
       console.log('');
       console.log(`受影响功能（${result.affectedFeatures.length}）：`);
+      let lastSeverity: string | undefined;
       for (const f of result.affectedFeatures) {
-        console.log(`  ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
-        for (const reason of f.reasons) console.log(`    · ${reason}`);
-        if (f.tests.length > 0) console.log(`    相关测试：${f.tests.join(', ')}`);
-        if (f.documents.length > 0) console.log(`    相关文档：${f.documents.join(', ')}`);
+        if (f.severity !== lastSeverity) {
+          console.log(`  ${f.severity}`);
+          lastSeverity = f.severity;
+        }
+        console.log(`    ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
+        for (const reason of f.reasons) console.log(`      · ${reason}`);
+        if (f.tests.length > 0) console.log(`      相关测试：${f.tests.join(', ')}`);
+        if (f.documents.length > 0) console.log(`      相关文档：${f.documents.join(', ')}`);
       }
       if (result.affectedFeatures.length === 0) {
         console.log('  （没有达到可展示置信度的影响）');
+      }
+      if (result.sharedInfrastructure.length > 0) {
+        console.log('');
+        console.log('共享基础设施（不归属任何单一功能）：');
+        for (const s of result.sharedInfrastructure) {
+          console.log(`  ${s.path} —— ${s.reason}`);
+        }
+      }
+      if (result.suppressedUncertainty.length > 0) {
+        console.log('');
+        console.log('未达展示阈值的低置信度影响（显式呈现不确定性）：');
+        for (const u of result.suppressedUncertainty) {
+          console.log(`  ${u.featureName ?? u.featureId} —— 置信度 ${u.confidence}（${u.reason}）`);
+        }
       }
       if (result.potentiallyStaleDocuments.length > 0) {
         console.log('');

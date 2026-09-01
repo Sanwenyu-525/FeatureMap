@@ -136,6 +136,8 @@ describe('analyzeImpact', () => {
     expect(login).toBeDefined();
     expect(login?.confidence).toBeGreaterThanOrEqual(0.9);
     expect(login?.reasons.join(' ')).toContain('src/auth/login.js');
+    // Direct closure hit without a symbol-level match → MEDIUM (ADR-0004 §3).
+    expect(login?.severity).toBe('MEDIUM');
   });
 
   it('traverses reverse IMPORTS with penalised confidence', async () => {
@@ -220,5 +222,67 @@ describe('analyzeImpact with commit range (Milestone 11, ADR-0004 §1)', () => {
     const reasons = login?.reasons.join(' ') ?? '';
     // Milestone 11 exit criteria: symbol-level reasons in the chain.
     expect(reasons).toContain('changed symbol(s): login');
+    // Milestone 12: symbol-level direct match → HIGH (ADR-0004 §3).
+    expect(login?.severity).toBe('HIGH');
+  });
+});
+
+describe('analyzeImpact severity & shared infrastructure (Milestone 12, ADR-0004 §3–§4)', () => {
+  it('isolates shared infrastructure (fan-in ≥ 3, no owner) from feature impact', async () => {
+    const repo = join(mkdtempSync(join(tmpdir(), 'featuremap-impact-m12-')), 'repo');
+    mkdirSync(join(repo, 'src/shared'), { recursive: true });
+    const git = (...args: string[]) =>
+      $`git -C ${repo} -c user.name=Test -c user.email=test@example.com ${args}`;
+    await $`git -C ${repo} init -b main -q`;
+
+    writeFileSync(join(repo, 'src/shared/logger.ts'), "export const logger = { info: () => {} };\n", 'utf8');
+    await git('add', 'src/shared/logger.ts');
+    await git('commit', '-m', 'feat: add logger', '--quiet');
+    writeFileSync(join(repo, 'src/shared/logger.ts'), "export const logger = { info: (m: string) => console.log(m) };\n", 'utf8');
+    await git('add', 'src/shared/logger.ts');
+    await git('commit', '-m', 'fix: format log', '--quiet');
+
+    const dbPath = join(mkdtempSync(join(tmpdir(), 'featuremap-impact-m12-db-')), 'featuremap.db');
+    const { db, sqlite } = openDatabase(dbPath);
+    db.insert(schema.projects).values({ id: 'p_m12', name: 'm12', root: repo, baseBranch: 'main' }).run();
+    const dependents = ['src/feat-a/a.ts', 'src/feat-b/b.ts', 'src/feat-c/c.ts'];
+    for (const path of dependents) {
+      db.insert(schema.files).values({ id: assetId({ type: 'file', path }), projectId: 'p_m12', path }).run();
+    }
+    dependents.forEach((path, i) => {
+      db.insert(schema.assets).values({ id: assetId({ type: 'file', path }), type: 'file', path }).run();
+      db.insert(schema.features)
+        .values({ id: `feature:${['a', 'b', 'c'][i]}`, name: ['A', 'B', 'C'][i], pattern: 'CRUD', confidence: 0.9 })
+        .run();
+      db.insert(schema.featureAssets)
+        .values({ featureId: `feature:${['a', 'b', 'c'][i]}`, assetId: assetId({ type: 'file', path }), confidence: 0.9 })
+        .run();
+      db.insert(schema.evidence)
+        .values({
+          id: `e_imports_${i + 1}`,
+          sourceType: 'file',
+          sourceId: path,
+          relationType: 'IMPORTS',
+          targetType: 'file',
+          targetId: 'src/shared/logger.ts',
+          confidence: 1.0,
+          analyzerId: 'typescript',
+          origin: 'deterministic',
+        })
+        .run();
+    });
+    sqlite.close();
+
+    const result = await analyzeImpact(repo, { range: 'HEAD~1..HEAD', dbPath });
+    // Logger has no owner and is depended on by 3 features → shared infra
+    // (ADR-0004 §4), never attributed as feature impact.
+    const loggerShared = result.sharedInfrastructure.find((s) => s.path === 'src/shared/logger.ts');
+    expect(loggerShared).toBeDefined();
+    expect(loggerShared?.dependentFeatureCount).toBe(3);
+    expect(loggerShared?.reason).toContain('fan-in ≥ 3');
+    // No feature lists logger as a reason.
+    expect(result.affectedFeatures.some((f) => f.reasons.join(' ').includes('logger'))).toBe(false);
+    // High-sensitive fan-in: direct ownership still counts as normal impact.
+    expect(result.suppressedUncertainty).toEqual([]);
   });
 });
