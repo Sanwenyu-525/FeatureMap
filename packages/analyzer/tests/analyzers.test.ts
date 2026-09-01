@@ -128,6 +128,24 @@ describe('resolveSpecifier (acceptance §1 Resolution blockers)', () => {
       }),
     ).toBe('src/shared/logger.ts');
   });
+
+  it('does not resolve non-script imports into the code graph (release-gate P2)', () => {
+    // JSON/CSS data imports (`package.json`, `timezone.json`, styles)
+    // must not become IMPORTS edges — they were surfacing as candidate
+    // noise on real repositories (dify scan).
+    const withData = new Set([
+      ...fileSet,
+      'src/package.json',
+      'src/data.json',
+      'src/styles.css',
+      'src/meta.json',
+    ]);
+    expect(resolveSpecifier('src/app.ts', './package.json', withData)).toBeUndefined();
+    expect(resolveSpecifier('src/app.ts', './data.json', withData)).toBeUndefined();
+    expect(resolveSpecifier('src/app.ts', './styles.css', withData)).toBeUndefined();
+    // Script imports keep resolving as before.
+    expect(resolveSpecifier('src/app.ts', './auth/login', withData)).toBe('src/auth/login.ts');
+  });
 });
 
 describe('express analyzer', () => {

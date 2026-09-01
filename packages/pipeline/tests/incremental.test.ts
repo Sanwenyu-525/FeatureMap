@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { typescriptAnalyzer } from '@featuremap/analyzer';
+import { typescriptAnalyzer, typescriptCacheKeyOf } from '@featuremap/analyzer';
 import type { AnalyzeContext, AnalysisCache } from '@featuremap/analyzer';
 import { runScan } from '../src/scan-runner.js';
 
@@ -113,6 +113,28 @@ describe('typescript analyzer analysis cache', () => {
     const after = typescriptAnalyzer.analyze({ ...baseContext, cache, fileSetKey: 'set-2' });
     expect(after.stats?.cacheHits).toBe(0);
     expect(after.stats?.cacheMisses).toBe(files.length);
+  });
+
+  it('embeds a stable, non-empty analyzer code hash in cache keys (release-gate P2)', () => {
+    const file = files[0];
+    const key = typescriptCacheKeyOf(file, 'set-1');
+    expect(key).toMatch(/^typescript:/);
+    expect(key).toBe(typescriptCacheKeyOf(file, 'set-1'));
+    // A different analyzer build (different code hash) yields a
+    // different key — the mechanism that invalidates stale evidence
+    // when the analyzer code changes.
+    expect(key).not.toBe(typescriptCacheKeyOf(file, 'set-1', 'other-build'));
+  });
+
+  it('ignores stale cache entries written by an older analyzer build (release-gate P2)', () => {
+    const cache = memoryCache();
+    // Pre-seed the cache with a payload keyed under an older build's
+    // code hash: it must never be replayed, forcing a full re-analysis.
+    const staleKey = typescriptCacheKeyOf(files[0], 'set-1', 'stale-build');
+    cache.put(staleKey, { symbols: [], namedImports: [], evidence: [] });
+    const result = typescriptAnalyzer.analyze({ ...baseContext, cache, fileSetKey: 'set-1' });
+    expect(result.stats?.cacheHits).toBe(0);
+    expect(result.stats?.cacheMisses).toBe(files.length);
   });
 });
 

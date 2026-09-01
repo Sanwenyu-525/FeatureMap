@@ -148,6 +148,37 @@ describe('expandCandidates', () => {
     });
   });
 
+  it('marks a distance-1 cross-feature import as DEPENDS_ON, never ownership (release-gate P2)', () => {
+    // login imports a billing hook directly (distance 1); billing also
+    // anchors the same file. The file is billing's code, so login must
+    // see it as a dependency — the dify `use-ps-info.ts` misjudgment.
+    const evidence = [
+      IMPORTS('src/login/login-page.ts', 'src/billing/use-ps-info.ts'),
+      IMPORTS('src/billing/use-ps-info.ts', 'src/billing/billing-service.ts'),
+    ];
+    const anchors: AnchorNode[] = [
+      { featureId: 'feature:login', nodeType: 'file', nodeId: 'src/login/login-page.ts', source: 'file' },
+      { featureId: 'feature:billing', nodeType: 'file', nodeId: 'src/billing/use-ps-info.ts', source: 'file' },
+    ];
+    const candidates = expandCandidates(anchors, evidence);
+    const byKey = new Map(candidates.map((c) => [`${c.featureId}|${c.targetId}`, c]));
+
+    // billing owns its own anchor file (declared).
+    expect(byKey.get('feature:billing|src/billing/use-ps-info.ts')).toMatchObject({
+      relation: 'owns',
+      status: 'declared',
+      distance: 0,
+    });
+    // login reaches it at distance 1, but it is billing's code.
+    expect(byKey.get('feature:login|src/billing/use-ps-info.ts')).toMatchObject({
+      relation: 'DEPENDS_ON',
+      distance: 1,
+    });
+    // login's own dependency chain still resolves to ownership for
+    // modules it reaches first (single-owner, closest anchor wins).
+    expect(byKey.has('feature:login|src/billing/billing-service.ts')).toBe(true);
+  });
+
   it('produces deterministic output and fingerprints', () => {
     const evidence = [IMPORTS('src/a.ts', 'src/b.ts'), CONTAINS('src/a.ts', 'symbol:src/a.ts:foo')];
     const anchors = [fileAnchor('src/a.ts')];

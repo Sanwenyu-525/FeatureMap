@@ -13,7 +13,10 @@
  * everything else is deterministic (1.0).
  */
 import * as ts from 'typescript';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { normalizePath } from '@featuremap/core';
 import type {
   AnalyzerPlugin,
@@ -30,6 +33,26 @@ import { emptyResult } from '@featuremap/plugin-sdk';
 const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 
 export const symbolId = (path: string, name: string): string => `symbol:${path}:${name}`;
+
+/**
+ * Hash of this analyzer's executed code (the compiled module file).
+ * Cache keys embed it so that editing the analyzer and rebuilding
+ * invalidates stale per-file evidence automatically — the release-gate
+ * P2 that a hand-bumped version string alone kept missing
+ * (docs/reports/v0.2-release-gate-2026-09-01.md).
+ */
+export const typescriptAnalyzerCodeHash = createHash('sha256')
+  .update(readFileSync(fileURLToPath(import.meta.url), 'utf8'))
+  .digest('hex')
+  .slice(0, 8);
+
+/** Deterministic per-file cache key; the analyzer code hash participates so code changes never replay stale evidence. */
+export const typescriptCacheKeyOf = (
+  file: ScannedFile,
+  fileSetKey: string,
+  codeHash: string = typescriptAnalyzerCodeHash,
+): string =>
+  `${typescriptAnalyzer.id}:${typescriptAnalyzer.version}:${codeHash}:${file.hash}:${fileSetKey}`;
 
 function isScriptFile(path: string): boolean {
   const lower = path.toLowerCase();
@@ -68,7 +91,10 @@ export function resolveSpecifier(
   if (specifier.startsWith('.')) {
     const base = normalizePath(join(dirname(fromPath), specifier).replace(/\\/g, '/'));
     for (const candidate of candidatePaths(base)) {
-      if (fileSet.has(candidate)) return candidate;
+      // Only script files enter the code graph: resolving JSON/CSS
+      // imports (e.g. `import pkg from './package.json'`) would add
+      // data assets as IMPORTS noise (release-gate P2).
+      if (fileSet.has(candidate) && isScriptFile(candidate)) return candidate;
     }
     return undefined;
   }
@@ -97,7 +123,7 @@ export function resolveSpecifier(
     // file-set lookup matches repo-relative ids (real-project finding).
     const normalized = normalizePath(base.replace(/\\/g, '/')).replace(/^\.\//, '');
     for (const candidate of candidatePaths(normalized)) {
-      if (fileSet.has(candidate)) return candidate;
+      if (fileSet.has(candidate) && isScriptFile(candidate)) return candidate;
     }
   }
   return undefined;
@@ -443,7 +469,7 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
     const resolution = context.moduleResolution;
     const cache = context.cache;
     const cacheKeyOf = (file: ScannedFile): string =>
-      `${typescriptAnalyzer.id}:${typescriptAnalyzer.version}:${file.hash}:${context.fileSetKey ?? ''}`;
+      typescriptCacheKeyOf(file, context.fileSetKey ?? '');
     let cacheHits = 0;
     let cacheMisses = 0;
 

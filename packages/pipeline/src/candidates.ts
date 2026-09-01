@@ -16,8 +16,10 @@
  * - score = pathConfidence × DISTANCE_DECAY^distance × fanInFactor —
  *   high fan-in shared infrastructure (logger, config, UI primitives)
  *   is down-weighted so it never surfaces as ownership
- * - owns: distance ≤ 1 (short, strong chain from the anchor);
- *   DEPENDS_ON: reached transitively (ADR-0003 §3)
+ * - owns: the anchor itself, or a short chain (distance ≤ 1) whose
+ *   target this feature wins ownership arbitration for — a node close
+ *   to ANOTHER feature's anchor is that feature's code and stays a
+ *   dependency here; DEPENDS_ON: reached transitively (ADR-0003 §3)
  */
 import { createHash } from 'node:crypto';
 
@@ -223,6 +225,34 @@ export function expandCandidates(
     }
   }
 
+  // ---- Ownership arbitration (release-gate P2) --------------------------
+  // A node reachable as `owns` (distance ≤ 1) from more than one
+  // feature's anchor belongs to the closest one; every other feature
+  // reaches it only as DEPENDS_ON. Otherwise a distance-1 cross-feature
+  // import (one feature importing another's component, e.g. the dify
+  // `use-ps-info.ts` case) would be mislabelled as ownership
+  // (docs/reports/v0.2-release-gate-2026-09-01.md §4).
+  const ownerOf = new Map<string, string>();
+  for (const [featureId, featureStates] of states) {
+    for (const [node, state] of featureStates) {
+      if (state.distance > 1) continue;
+      const currentOwner = ownerOf.get(node);
+      if (currentOwner === undefined) {
+        ownerOf.set(node, featureId);
+        continue;
+      }
+      const current = states.get(currentOwner)!.get(node)!;
+      const better =
+        state.distance < current.distance ||
+        (state.distance === current.distance &&
+          state.pathConfidence > current.pathConfidence) ||
+        (state.distance === current.distance &&
+          state.pathConfidence === current.pathConfidence &&
+          featureId < currentOwner);
+      if (better) ownerOf.set(node, featureId);
+    }
+  }
+
   // ---- Materialize candidates ------------------------------------------
   const candidates: CandidateRelation[] = [];
   for (const [featureId, featureStates] of states) {
@@ -264,11 +294,16 @@ export function expandCandidates(
         targetId: edge.to.startsWith('symbol:') ? edge.to.slice('symbol:'.length) : edge.to.slice('file:'.length),
         confidence: edge.confidence,
       }));
+      // The anchor itself, or a node this feature owns (closest anchor
+      // wins arbitration), is `owns`; anything owned by another feature
+      // — or reached only transitively — is a dependency.
+      const isOwnedByThisFeature =
+        isAnchor || (ownerOf.get(node) !== undefined && ownerOf.get(node) === featureId);
       candidates.push({
         featureId,
         targetType,
         targetId,
-        relation: state.distance <= 1 ? 'owns' : 'DEPENDS_ON',
+        relation: isOwnedByThisFeature ? 'owns' : 'DEPENDS_ON',
         status: isAnchor ? 'declared' : 'suggested',
         score: Number(score.toFixed(4)),
         distance: state.distance,
