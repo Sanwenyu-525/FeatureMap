@@ -4,6 +4,7 @@
 export * from './scan-runner.js';
 export * from './feature-discovery.js';
 export * from './impact.js';
+export * from './pr-report.js';
 export * from './graph.js';
 export * from './mapping-quality.js';
 export * from './candidates.js';

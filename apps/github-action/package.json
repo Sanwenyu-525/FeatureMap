@@ -1,0 +1,19 @@
+{
+  "name": "@featuremap/github-action",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap GitHub Action: posts the feature-aware PR analysis as a check run (Phase 4 / ADR-0006).",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js",
+    "typecheck": "tsc -b --pretty"
+  },
+  "dependencies": {
+    "@featuremap/scm": "workspace:*"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.3"
+  }
+}

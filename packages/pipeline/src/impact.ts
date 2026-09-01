@@ -85,6 +85,12 @@ export interface RecommendedTest {
 
 export interface ImpactResult {
   changedFiles: Array<{ path: string; changeType: string; commitSha: string }>;
+  /**
+   * Changed symbols extracted from diff hunks (commit-range sources
+   * only; empty for working-tree/branch-diff). Symbol ids carry the
+   * `symbol:` prefix (candidates store them without it).
+   */
+  changedSymbols: Array<{ path: string; name: string; symbolId: string }>;
   /** Ranked by severity then confidence; below-threshold evidence is excluded. */
   affectedFeatures: AffectedFeature[];
   /** Changed shared infrastructure (fan-in ≥ 3 features), not attributed. */
@@ -140,6 +146,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
     // ---- Collect the change set from the requested sources --------------
     const changedFileRows: Array<{ path: string; changeType: string; commitSha: string }> = [];
     const changedSymbolsByPath = new Map<string, string[]>();
+    const changedSymbols: Array<{ path: string; name: string; symbolId: string }> = [];
     for (const source of parseChangeSources(range)) {
       if (source.kind === 'working-tree' || source.kind === 'branch-diff') {
         const pseudoSha = source.kind === 'working-tree' ? 'WORKING_TREE' : 'BRANCH_DIFF';
@@ -167,6 +174,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
           const existing = changedSymbolsByPath.get(sym.path) ?? [];
           if (!existing.includes(sym.name)) existing.push(sym.name);
           changedSymbolsByPath.set(sym.path, existing);
+          changedSymbols.push({ path: sym.path, name: sym.name, symbolId: sym.symbolId });
         }
       }
     }
@@ -367,6 +375,7 @@ export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {
 
     return {
       changedFiles,
+      changedSymbols,
       affectedFeatures,
       sharedInfrastructure,
       suppressedUncertainty,

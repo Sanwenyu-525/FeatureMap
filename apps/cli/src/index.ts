@@ -214,6 +214,184 @@ program
   });
 
 program
+  .command('pr')
+  .description('功能视角的 Pull Request 分析：受影响功能 + 风险 + 测试覆盖 + 映射漂移（Phase 4，v0.4.0）。')
+  .argument('[range]', '可选：提交区间（HEAD、main..HEAD）；缺省为工作树 + 分支差异')
+  .option('--json', '输出机器可读的 JSON')
+  .action(async (range: string | undefined, opts: { json?: boolean }) => {
+    try {
+      const { buildPrReport } = await import('@featuremap/pipeline');
+      const report = await buildPrReport(process.cwd(), { range });
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+        return;
+      }
+      console.log(`PR 分析（featuremap pr）  范围：${range ?? '工作树 + 分支差异'}`);
+      console.log(`分支：${report.currentBranch ?? '未知'}（基准：${report.baseBranch ?? '未知'}）`);
+      console.log('');
+      console.log(`变更文件（${report.changedFiles.length}）：`);
+      for (const f of report.changedFiles) {
+        console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
+      }
+      if (report.changedFiles.length === 0) console.log('  （未检测到该区间的变更）');
+      console.log('');
+      console.log(`受影响功能（${report.affectedFeatures.length}）：`);
+      let lastSeverity: string | undefined;
+      for (const f of report.affectedFeatures) {
+        if (f.severity !== lastSeverity) {
+          console.log(`  ${f.severity}`);
+          lastSeverity = f.severity;
+        }
+        console.log(`    ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
+        for (const reason of f.reasons) console.log(`      · ${reason}`);
+      }
+      if (report.affectedFeatures.length === 0) console.log('  （没有达到可展示置信度的影响）');
+      if (report.sharedInfrastructure.length > 0) {
+        console.log('');
+        console.log('共享基础设施（不归属任何单一功能）：');
+        for (const s of report.sharedInfrastructure) console.log(`  ${s.path} —— ${s.reason}`);
+      }
+      console.log('');
+      console.log(`风险：${report.risk.band}`);
+      if (report.risk.contributions.length === 0) {
+        console.log('  （无显著风险信号）');
+      }
+      for (const c of report.risk.contributions) console.log(`  · +${c.points} ${c.reason}`);
+      if (report.testCoverage.length > 0) {
+        console.log('');
+        console.log('相关测试（⚠ 为潜在缺失覆盖，非"测试缺失"）：');
+        for (const t of report.testCoverage) {
+          console.log(`  ${t.changed ? '✓' : '⚠'} ${t.path}`);
+        }
+      }
+      if (report.mappingDrift.length > 0) {
+        console.log('');
+        console.log('映射漂移：');
+        for (const d of report.mappingDrift) {
+          console.log(`  [${d.kind}] ${d.featureName ?? d.featureId}：${d.reason}`);
+        }
+      }
+      if (report.suppressedUncertainty.length > 0) {
+        console.log('');
+        console.log('未达展示阈值的低置信度影响（显式呈现不确定性）：');
+        for (const u of report.suppressedUncertainty) {
+          console.log(`  ${u.featureName ?? u.featureId} —— 置信度 ${u.confidence}（${u.reason}）`);
+        }
+      }
+      if (report.staleDocuments.length > 0) {
+        console.log('');
+        console.log('可能过期的文档：');
+        for (const d of report.staleDocuments) console.log(`  ${d.path} —— ${d.reason}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+/** Parse `GITHUB_REPOSITORY` ("owner/repo") into parts. */
+function parseGitHubRepository(spec?: string): { owner?: string; repo?: string } {
+  if (!spec) return {};
+  const [owner, repo] = spec.split('/');
+  return { owner: owner || undefined, repo: repo || undefined };
+}
+
+program
+  .command('gh')
+  .description('GitHub 集成（Phase 4 / ADR-0006）。')
+  .command('check')
+  .description('在 PR head 上创建/更新 FeatureMap 分析 check run（薄传输，ADR-0006）。')
+  .option('--base <ref>', '基准 ref（默认 GITHUB_BASE_REF 环境变量或 main）')
+  .option('--head <sha>', 'PR head SHA（默认 GITHUB_SHA 环境变量）')
+  .option('--owner <owner>', '仓库 owner（默认取 GITHUB_REPOSITORY）')
+  .option('--repo <repo>', '仓库名（默认取 GITHUB_REPOSITORY）')
+  .option('--check-name <name>', 'check run 名称（默认 "FeatureMap / Pull Request Analysis"）')
+  .option('--skip-scan', '跳过扫描，使用已有本地 DB')
+  .option('--dry-run', '只渲染 check 内容并打印，不发送任何请求')
+  .option('--json', '输出机器可读 JSON')
+  .action(async (opts: {
+    base?: string;
+    head?: string;
+    owner?: string;
+    repo?: string;
+    checkName?: string;
+    skipScan?: boolean;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const repoRoot = process.cwd();
+    const ghRepo = parseGitHubRepository(process.env.GITHUB_REPOSITORY);
+    const owner = opts.owner ?? ghRepo.owner;
+    const repo = opts.repo ?? ghRepo.repo;
+    const headSha = opts.head ?? process.env.GITHUB_SHA;
+    const base = opts.base ?? process.env.GITHUB_BASE_REF ?? 'main';
+    const range = `${base}..HEAD`;
+
+    if (!owner || !repo) {
+      console.error('缺少仓库标识：请传 --owner/--repo，或设置 GITHUB_REPOSITORY（owner/repo）。');
+      process.exitCode = 1;
+      return;
+    }
+    if (!headSha) {
+      console.error('缺少 head SHA：请传 --head，或设置 GITHUB_SHA。');
+      process.exitCode = 1;
+      return;
+    }
+
+    const { buildPrReport, runScan } = await import('@featuremap/pipeline');
+    const { GitHubProvider, renderPrCheck, runGitHubCheck } = await import('@featuremap/scm');
+
+    if (opts.dryRun) {
+      try {
+        if (!opts.skipScan) await runScan(repoRoot, {});
+        const report = await buildPrReport(repoRoot, { range });
+        const rendered = renderPrCheck(report);
+        if (opts.json) {
+          console.log(JSON.stringify(rendered, null, 2));
+        } else {
+          console.log(`[dry-run] ${owner}/${repo} ${range}`);
+          console.log(`结论：${rendered.conclusion}`);
+          console.log(`摘要：${rendered.summary}`);
+          console.log('');
+          console.log(rendered.text);
+        }
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      console.error('缺少 GITHUB_TOKEN 环境变量（或使用 --dry-run 只渲染）。');
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const provider = new GitHubProvider({ token, owner, repo });
+      const result = await runGitHubCheck(repoRoot, {
+        provider,
+        owner,
+        repo,
+        headSha,
+        range,
+        checkName: opts.checkName,
+        scan: !opts.skipScan,
+      });
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`Check run ${result.id}（${result.updated ? '已更新' : '已创建'}） @ ${owner}/${repo} ${headSha}`);
+        console.log(`结论：${result.ok ? '分析成功' : '分析失败'}：${result.summary}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('feature')
   .description('以终端友好的形式输出功能上下文。')
   .argument('<name-or-id>', '功能名称或 ID')
