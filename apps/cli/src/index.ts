@@ -105,7 +105,8 @@ program
       }
       const { startServer } = await import('@featuremap/server');
       const { port } = await startServer({ repoRoot });
-      console.log(`FeatureMap API listening on http://127.0.0.1:${port}/api`);
+      console.log(`FeatureMap UI:  http://127.0.0.1:${port}`);
+      console.log(`FeatureMap API: http://127.0.0.1:${port}/api`);
       console.log('Press Ctrl+C to stop.');
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
@@ -188,6 +189,20 @@ program
       for (const ev of evidence.slice(0, 20)) {
         console.log(`  ${ev.sourceId} → ${feature.name} (${ev.confidence}, ${ev.analyzerId})`);
       }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('mcp')
+  .description('Run the FeatureMap MCP server over stdio.')
+  .action(async () => {
+    try {
+      const { startMcpStdio } = await import('@featuremap/mcp');
+      await startMcpStdio({ repoRoot: process.cwd() });
+      // stdio transport keeps the process alive; Ctrl+C terminates.
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exitCode = 1;

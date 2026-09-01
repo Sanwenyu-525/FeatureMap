@@ -5,7 +5,10 @@
  * configured. Returns DTOs with evidence and confidence preserved.
  */
 import { eq, desc, sql } from 'drizzle-orm';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
 import { runScan, analyzeImpact } from '@featuremap/pipeline';
 import type {
@@ -64,6 +67,14 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   const dbPath = options.dbPath ?? defaultDatabasePath(options.repoRoot);
   const { db, sqlite } = openDatabase(dbPath);
+
+  // Serve the built Web UI when present (docs/MVP_SPEC.md §6: featuremap
+  // dev starts the local API *and* Web UI). Vite dev proxies /api in
+  // development; in production the same origin serves both.
+  const webDist = join(options.repoRoot, 'apps', 'web', 'dist');
+  if (existsSync(join(webDist, 'index.html'))) {
+    app.register(fastifyStatic, { root: webDist, prefix: '/' });
+  }
 
   app.get('/api/project', async (_req, reply) => {
     const project = getProject(db);
