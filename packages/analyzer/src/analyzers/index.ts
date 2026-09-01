@@ -8,6 +8,7 @@ import { nestjsAnalyzer } from './nestjs.js';
 import { prismaAnalyzer } from './prisma.js';
 import { markdownAnalyzer } from './markdown.js';
 import { gitAnalyzer } from './git.js';
+import { cliAnalyzer } from './cli.js';
 
 export const builtInAnalyzers: AnalyzerPlugin[] = [
   typescriptAnalyzer,
@@ -16,6 +17,7 @@ export const builtInAnalyzers: AnalyzerPlugin[] = [
   prismaAnalyzer,
   markdownAnalyzer,
   gitAnalyzer,
+  cliAnalyzer,
 ];
 
 export {
@@ -25,4 +27,5 @@ export {
   prismaAnalyzer,
   markdownAnalyzer,
   gitAnalyzer,
+  cliAnalyzer,
 };

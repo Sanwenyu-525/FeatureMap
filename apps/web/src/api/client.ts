@@ -53,10 +53,28 @@ export interface FeatureListItem {
   updatedAt: string;
 }
 
+export interface Candidate {
+  featureId: string;
+  targetType: 'file' | 'symbol';
+  targetId: string;
+  relation: 'owns' | 'DEPENDS_ON';
+  status: 'declared' | 'suggested' | 'accepted' | 'rejected' | 'superseded';
+  score: number;
+  distance: number;
+  fanIn: number;
+  evidenceChain: Array<{
+    relationType: string;
+    sourceId: string;
+    targetId: string;
+    confidence: number;
+  }>;
+}
+
 export interface FeatureDetail extends FeatureListItem {
   parentId?: string;
   assets: Array<{ id: string; type: string; path?: string; name?: string }>;
   documents: Array<{ path: string; title?: string }>;
+  candidates: Candidate[];
   evidence: Array<{
     id: string;
     relationType: string;
@@ -127,4 +145,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ mode }),
     }),
+  verdict: (featureId: string, targetId: string, verdict: 'accepted' | 'rejected') =>
+    request<{ status: string; targetId: string; featureId: string }>(
+      `/features/${encodeURIComponent(featureId)}/candidates/verdict`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ targetId, verdict }),
+      },
+    ),
 };

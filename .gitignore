@@ -3,6 +3,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Playwright
+test-results/
+playwright-report/
+
 # FeatureMap runtime/cache directory
 .featuremap/
 featuremap.yaml

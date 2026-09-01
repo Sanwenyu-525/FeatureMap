@@ -20,32 +20,32 @@ export default function OverviewPage() {
   if (error) {
     return (
       <>
-        <PageTitle title="Overview" />
+        <PageTitle title="概览" />
         <ErrorNotice error={error} />
       </>
     );
   }
-  if (!overview || !project) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!overview || !project) return <p className="text-sm text-slate-500">加载中…</p>;
 
   return (
     <>
       <PageTitle
         title={project.name}
-        subtitle={`${project.currentBranch ?? 'unknown branch'} · base ${project.baseBranch}`}
+        subtitle={`${project.currentBranch ?? '未知分支'} · 基准分支 ${project.baseBranch}`}
       />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Features" value={overview.counts.features} />
-        <StatCard label="Files" value={overview.counts.files} />
-        <StatCard label="Endpoints" value={overview.counts.endpoints} />
-        <StatCard label="Tests" value={overview.counts.tests} />
-        <StatCard label="Documents" value={overview.counts.documents} />
-        <StatCard label="Instructions" value={overview.counts.instructions} />
+        <StatCard label="功能" value={overview.counts.features} />
+        <StatCard label="文件" value={overview.counts.files} />
+        <StatCard label="端点" value={overview.counts.endpoints} />
+        <StatCard label="测试" value={overview.counts.tests} />
+        <StatCard label="文档" value={overview.counts.documents} />
+        <StatCard label="规则" value={overview.counts.instructions} />
       </div>
       <section className="mt-8">
-        <h2 className="mb-2 text-sm font-medium text-slate-700">Technologies</h2>
+        <h2 className="mb-2 text-sm font-medium text-slate-700">技术栈</h2>
         <div className="flex flex-wrap gap-2">
           {project.technologies.length === 0 ? (
-            <p className="text-sm text-slate-500">None detected.</p>
+            <p className="text-sm text-slate-500">未检测到技术栈。</p>
           ) : (
             project.technologies.map((t) => (
               <span
@@ -60,7 +60,7 @@ export default function OverviewPage() {
       </section>
       <section className="mt-8 text-sm">
         <Link to="/changes" className="text-indigo-600 hover:underline">
-          Current changes: {overview.currentImpact.changedFiles} file(s) →
+          当前变更：{overview.currentImpact.changedFiles} 个文件 →
         </Link>
       </section>
     </>

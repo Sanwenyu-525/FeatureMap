@@ -49,7 +49,7 @@ describe('GET /api/overview', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { counts: Record<string, number> };
     expect(body.counts.files).toBeGreaterThan(0);
-    expect(body.counts.endpoints).toBe(2);
+    expect(body.counts.endpoints).toBe(3);
     expect(body.counts.documents).toBe(1);
   });
 });
@@ -120,5 +120,50 @@ describe('GET /api/analyzers', () => {
     expect(ids).toContain('typescript');
     expect(ids).toContain('express');
     expect(ids).toContain('prisma');
+  });
+});
+
+describe('POST /api/features/:id/candidates/verdict', () => {
+  it('records a verdict and reflects it in the feature detail', async () => {
+    const detailUrl = `/api/features/${encodeURIComponent('feature:login')}`;
+    const before = await app.inject({ method: 'GET', url: detailUrl });
+    const { candidates } = before.json() as {
+      candidates: Array<{ targetId: string; status: string }>;
+    };
+    const suggested = candidates.find((c) => c.status === 'suggested');
+    expect(suggested).toBeDefined();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `${detailUrl}/candidates/verdict`,
+      payload: { targetId: suggested!.targetId, verdict: 'rejected' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'rejected', targetId: suggested!.targetId });
+
+    const after = await app.inject({ method: 'GET', url: detailUrl });
+    const afterCandidates = (after.json() as {
+      candidates: Array<{ targetId: string; status: string }>;
+    }).candidates;
+    expect(afterCandidates.find((c) => c.targetId === suggested!.targetId)?.status).toBe('rejected');
+  });
+
+  it('rejects invalid verdict values and unknown targets', async () => {
+    const url = `/api/features/${encodeURIComponent('feature:login')}/candidates/verdict`;
+    const badVerdict = await app.inject({
+      method: 'POST',
+      url,
+      payload: { targetId: 'src/auth/login.js', verdict: 'maybe' },
+    });
+    expect(badVerdict.statusCode).toBe(400);
+    expect(badVerdict.json().error.code).toBe('INVALID_CONFIG');
+
+    const unknown = await app.inject({
+      method: 'POST',
+      url,
+      payload: { targetId: 'src/does-not-exist.js', verdict: 'rejected' },
+    });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json().error.code).toBe('CANDIDATE_NOT_FOUND');
   });
 });

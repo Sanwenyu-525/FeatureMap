@@ -107,6 +107,7 @@ Initial relation vocabulary:
 ```text
 IMPORTS
 CALLS
+CONTAINS
 REFERENCES
 ROUTES_TO
 HANDLED_BY
@@ -121,6 +122,10 @@ MODIFIED_BY
 AFFECTS
 BELONGS_TO_FEATURE
 ```
+
+`CONTAINS` (ADR-0003) marks structural containment: file→symbol and
+class→method. It is distinct from `REFERENCES`, which identifies
+exported symbols.
 
 Avoid creating near-duplicate relation names unless semantics truly differ.
 

@@ -1,0 +1,47 @@
+# Ground truth — docs/releases/v0.2-acceptance.md §2 (Quality Gate).
+#
+# Symbol-level lists are measured by the anchor-driven candidate
+# engine (Milestone 7); file-level lists are measured against the
+# current endpoint-anchored discovery engine.
+#
+# This fixture primarily measures **recall from a UI-side feature**:
+# the React component tree (LoginPage → LoginForm, useLogin) is only
+# reachable through the declared file anchor and component-usage
+# traversal — the current endpoint-only closure cannot reach it.
+feature: login
+pattern: Authentication
+
+anchors:
+  - type: endpoint
+    target: POST /api/login
+  - type: file
+    target: src/login/LoginPage.tsx
+
+expected:
+  - loginHandler
+  - login
+  - AuthService.authenticate
+  - UserRepository.findByEmail
+  - LoginPage
+  - LoginForm
+  - useLogin
+
+notExpected:
+  - Button
+  - PasswordInput
+  - logger
+
+expectedFiles:
+  - src/server.ts
+  - src/api/login-handler.ts
+  - src/api/auth.ts
+  - src/services/auth-service.ts
+  - src/services/user-repository.ts
+  - src/login/LoginPage.tsx
+  - src/login/LoginForm.tsx
+  - src/login/useLogin.ts
+
+notExpectedFiles:
+  - src/components/Button.tsx
+  - src/components/PasswordInput.tsx
+  - src/shared/logger.ts

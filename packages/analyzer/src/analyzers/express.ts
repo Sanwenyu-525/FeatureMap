@@ -20,6 +20,15 @@ import { resolveSpecifier, symbolId } from './typescript.js';
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'all', 'use']);
 const RECEIVER_PATTERN = /^(app|router|api)$/;
 
+/**
+ * Detection is based on the route-registration pattern itself, not on a
+ * framework dependency declaration: Fastify/Express share the
+ * `app.get('/path', ...)` shape, and the dogfooding session showed that
+ * dependency-based detection silently disabled route discovery for
+ * Fastify repositories (docs/reports/dogfooding-mvp-2026-09-01.md).
+ */
+const ROUTE_PATTERN = /\.(get|post|put|delete|patch|all|use)\s*\(\s*['"`]/;
+
 function isScriptFile(path: string): boolean {
   const lower = path.toLowerCase();
   return (
@@ -34,7 +43,7 @@ export const expressAnalyzer: AnalyzerPlugin = {
 
   detect(context: DetectContext): DetectionResult {
     const detected = context.files.some(
-      (f) => f.path.endsWith('package.json') && context.readFile(f.path)?.includes('"express"'),
+      (f) => isScriptFile(f.path) && ROUTE_PATTERN.test(context.readFile(f.path) ?? ''),
     );
     return { detected, confidence: detected ? 1.0 : 0 };
   },
@@ -62,11 +71,22 @@ export const expressAnalyzer: AnalyzerPlugin = {
             if (firstArg && ts.isStringLiteral(firstArg)) {
               const routePath = firstArg.text;
               const endpointName = `${method} ${routePath}`;
+              const handlerArg = node.arguments[1];
+              // Inline arrow/function handlers have no symbol to resolve
+              // but still prove the endpoint is implemented
+              // (dogfooding finding: implementation stayed "unknown").
+              const inlineHandler =
+                handlerArg &&
+                (ts.isArrowFunction(handlerArg) || ts.isFunctionExpression(handlerArg));
               const asset: CodeAssetInput = {
                 type: 'endpoint',
                 path: file.path,
                 name: endpointName,
-                metadata: { method, routePath },
+                metadata: {
+                  method,
+                  routePath,
+                  ...(inlineHandler ? { handler: 'inline' } : {}),
+                },
               };
               result.assets.push(asset);
 
@@ -81,7 +101,6 @@ export const expressAnalyzer: AnalyzerPlugin = {
               });
 
               // Resolve a handler identifier to a symbol (same file or import).
-              const handlerArg = node.arguments[1];
               if (handlerArg && ts.isIdentifier(handlerArg)) {
                 const handlerName = handlerArg.text;
                 const targetFile = findSymbolFile(handlerName, file.path, sourceFile, fileSet);

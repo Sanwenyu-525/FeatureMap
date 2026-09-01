@@ -5,6 +5,9 @@ const app = express();
 
 app.post('/api/login', loginHandler);
 app.get('/api/users', listUsers);
+app.post('/api/session', (req, res) => {
+  res.json({ token: 'demo-session' });
+});
 
 function listUsers(req, res) {
   res.json([]);

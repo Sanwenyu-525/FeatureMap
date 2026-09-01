@@ -1,0 +1,6 @@
+{
+  "name": "react-login-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Ground-truth fixture 02: React login UI (component tree + hook + service) backed by an Express endpoint, with shared UI primitives that must not be claimed as feature ownership."
+}

@@ -11,13 +11,13 @@ export default function App() {
           <span className="text-base font-semibold tracking-tight">FeatureMap</span>
           <nav className="flex items-center gap-1">
             <NavLink to="/" className={navItem} end>
-              Overview
+              概览
             </NavLink>
             <NavLink to="/features" className={navItem}>
-              Features
+              功能
             </NavLink>
             <NavLink to="/changes" className={navItem}>
-              Changes
+              变更
             </NavLink>
           </nav>
         </div>

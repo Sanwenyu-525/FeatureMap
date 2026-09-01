@@ -25,6 +25,12 @@ pnpm test
 pnpm test:e2e
 ```
 
+`pnpm test:e2e` runs the Playwright suite against the fixture
+repository: it rescans the fixture, builds the Web UI, starts
+`featuremap dev` on the loopback port and drives the five MVP
+acceptance flows (docs/TESTING_STRATEGY.md §7). Install the browser
+once with `pnpm exec playwright install chromium`.
+
 ## Before contributing
 
 Read:

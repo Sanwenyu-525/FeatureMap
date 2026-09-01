@@ -74,7 +74,7 @@ export const assets = sqliteTable(
   {
     id: text('id').primaryKey(),
     type: text('type', {
-      enum: ['file', 'symbol', 'component', 'endpoint', 'data_entity', 'test'],
+      enum: ['file', 'symbol', 'component', 'endpoint', 'data_entity', 'test', 'cli_command'],
     }).notNull(),
     path: text('path'),
     name: text('name'),
@@ -196,6 +196,59 @@ export const featureInstructions = sqliteTable(
       .references(() => instructions.id, { onDelete: 'cascade' }),
   },
   (t) => [primaryKey({ columns: [t.featureId, t.instructionId] })],
+);
+
+/**
+ * One evidence step in a candidate's derivation chain (ADR-0003 §2,
+ * docs/releases/v0.2-acceptance.md §1: every suggestion must be
+ * explainable).
+ */
+export interface CandidateEvidenceStep {
+  relationType: string;
+  sourceId: string;
+  targetId: string;
+  confidence: number;
+}
+
+/**
+ * Candidate feature↔code relations produced by anchor-driven graph
+ * traversal (ADR-0003 §3–4). Review state survives rescans: rescan
+ * re-derives `suggested` rows but never overwrites `accepted` or
+ * `rejected` verdicts.
+ */
+export const featureCandidates = sqliteTable(
+  'feature_candidates',
+  {
+    id: text('id').primaryKey(),
+    featureId: text('feature_id')
+      .notNull()
+      .references(() => features.id, { onDelete: 'cascade' }),
+    targetType: text('target_type', { enum: ['file', 'symbol'] }).notNull(),
+    targetId: text('target_id').notNull(),
+    relation: text('relation', { enum: ['owns', 'DEPENDS_ON'] }).notNull(),
+    status: text('status', {
+      enum: ['declared', 'suggested', 'accepted', 'rejected', 'superseded'],
+    })
+      .notNull()
+      .default('suggested'),
+    score: real('score').notNull().default(0),
+    /** Relational hops from the nearest anchor (0 = anchor itself). */
+    distance: integer('distance').notNull().default(0),
+    /** Whole-repository in-degree of the target over relational edges. */
+    fanIn: integer('fan_in').notNull().default(0),
+    evidenceChain: text('evidence_chain', { mode: 'json' })
+      .$type<CandidateEvidenceStep[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    /** Hash of the evidence chain; verdict drift detection (v0.2-acceptance §4). */
+    fingerprint: text('fingerprint'),
+    createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
+    updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
+  },
+  (t) => [
+    uniqueIndex('feature_candidates_uq').on(t.featureId, t.targetType, t.targetId),
+    index('feature_candidates_feature_idx').on(t.featureId, t.status),
+  ],
 );
 
 export const commits = sqliteTable(

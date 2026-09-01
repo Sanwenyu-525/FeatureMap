@@ -1,0 +1,39 @@
+# Ground truth — docs/releases/v0.2-acceptance.md §2 (Quality Gate).
+#
+# `expected` / `notExpected` are symbol-level lists, measured by the
+# anchor-driven candidate engine (Milestone 7). They document the
+# release target and are reported as pending until that engine lands.
+#
+# `expectedFiles` / `notExpectedFiles` are file-level lists, measured
+# against the current endpoint-anchored discovery engine. Candidates
+# that are neither expected nor notExpected count as false positives
+# and are reported as a ground-truth gap.
+feature: login
+pattern: Authentication
+
+anchors:
+  - type: endpoint
+    target: POST /api/login
+  - type: file
+    target: src/auth/login.ts
+
+expected:
+  - loginHandler
+  - login
+  - AuthService.login
+  - UserRepository.findByEmail
+
+notExpected:
+  - logger
+  - HttpClient
+
+expectedFiles:
+  - src/server.ts
+  - src/auth/login-handler.ts
+  - src/auth/login.ts
+  - src/auth/auth-service.ts
+  - src/auth/user-repository.ts
+
+notExpectedFiles:
+  - src/shared/logger.ts
+  - src/shared/http-client.ts

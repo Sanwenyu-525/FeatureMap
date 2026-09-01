@@ -11,7 +11,7 @@ export function ErrorNotice({ error }: { error: unknown }) {
   }
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-      <p className="font-medium">Request failed</p>
+      <p className="font-medium">请求失败</p>
       <p className="mt-1">{error instanceof Error ? error.message : String(error)}</p>
     </div>
   );
@@ -34,3 +34,13 @@ export function StatCard({ label, value }: { label: string; value: number | stri
     </div>
   );
 }
+
+/** Explainable health dimension labels (docs/MVP_SPEC.md §9). */
+export const HEALTH_LABELS: Record<string, string> = {
+  implementation: '实现',
+  api: 'API',
+  tests: '测试',
+  documentation: '文档',
+  instructions: '规则',
+  documentationDrift: '文档漂移',
+};
