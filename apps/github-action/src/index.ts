@@ -28,19 +28,21 @@ async function main(): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
   const repository = process.env.GITHUB_REPOSITORY;
   const eventPath = process.env.GITHUB_EVENT_PATH;
-  const headSha = process.env.GITHUB_SHA;
 
   if (!token) throw new Error('GITHUB_TOKEN is required');
   if (!repository) throw new Error('GITHUB_REPOSITORY is required');
   if (!eventPath) throw new Error('GITHUB_EVENT_PATH is required');
-  if (!headSha) throw new Error('GITHUB_SHA is required');
 
   const [owner, repo] = repository.split('/');
   if (!owner || !repo) throw new Error(`Invalid GITHUB_REPOSITORY: ${repository}`);
 
   const event = JSON.parse(readFileSync(eventPath, 'utf8')) as PrEvent;
   const baseSha = event.pull_request?.base?.sha;
+  // Prefer the PR head SHA from the event payload; GITHUB_SHA on
+  // pull_request events can be a merge commit and is only a fallback.
+  const headSha = event.pull_request?.head?.sha ?? process.env.GITHUB_SHA;
   if (!baseSha) throw new Error('Pull request event payload is missing pull_request.base.sha');
+  if (!headSha) throw new Error('Pull request event payload is missing pull_request.head.sha');
 
   const provider = new GitHubProvider({ token, owner, repo });
   const result = await runGitHubCheck(process.cwd(), {
