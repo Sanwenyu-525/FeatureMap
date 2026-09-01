@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
-import { loadConfig } from '@featuremap/core';
+import { loadConfig, DEFAULT_FEATURE_HEALTH } from '@featuremap/core';
 import { scanRepository } from '@featuremap/scanner';
 import {
   runAnalyzers,
@@ -23,7 +23,8 @@ import {
   type EvidenceInput,
 } from '@featuremap/analyzer';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { discoverFeatures, isTestPath, type DiscoveredFeature } from './feature-discovery.js';
+import { discoverFeatures, isTestPath, slugify, type DiscoveredFeature } from './feature-discovery.js';
+import { expandCandidates, resolveAnchors } from './candidates.js';
 
 export interface ScanJsonOutput {
   project: {
@@ -41,6 +42,7 @@ export interface ScanJsonOutput {
     documents: number;
     instructions: number;
     features: number;
+    candidates: number;
     evidence: number;
     commits: number;
   };
@@ -55,6 +57,8 @@ export interface ScanJsonOutput {
     confidence: number;
     health: Record<string, string>;
   }>;
+  /** Scored feature↔code candidates (Milestone 7, ADR-0003 §3–5). */
+  candidates: CandidateDto[];
   commits: Array<{ sha: string; author: string; committedAt: string; message: string }>;
   evidence: Array<EvidenceInput & { id: string; analyzerId: string; origin: string }>;
   runs: Array<{
@@ -71,6 +75,17 @@ export interface ScanOptions {
   full?: boolean;
   /** Override the SQLite store location (used by tests). */
   dbPath?: string;
+}
+
+export interface CandidateDto {
+  featureId: string;
+  targetType: 'file' | 'symbol';
+  targetId: string;
+  relation: 'owns' | 'DEPENDS_ON';
+  status: 'declared' | 'suggested' | 'accepted' | 'rejected' | 'superseded';
+  score: number;
+  distance: number;
+  fanIn: number;
 }
 
 function projectIdFor(root: string): string {
@@ -163,6 +178,39 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // Feature discovery (Milestone 2): deterministic clustering.
   const discovered = discoverFeatures(output.assets, output.evidence);
 
+  // ---- Anchor-driven candidate expansion (Milestone 7, ADR-0003) ----------
+  // Endpoint/CLI anchors from discovered features plus declared anchors
+  // from the configuration. Declared anchors for features without an
+  // HTTP surface (CLI tools, core libraries) create visible features.
+  const declaredAnchors = config.features.anchors.map((a) => ({
+    featureId: `feature:${slugify(a.feature)}`,
+    type: a.type,
+    target: a.target,
+  }));
+  const discoveredIds = new Set(discovered.map((f) => f.id));
+  for (const anchor of declaredAnchors) {
+    if (discoveredIds.has(anchor.featureId)) continue;
+    const name = anchor.featureId.slice('feature:'.length);
+    discovered.push({
+      id: anchor.featureId,
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      pattern: 'Generic',
+      confidence: 1.0,
+      health: { ...DEFAULT_FEATURE_HEALTH },
+      anchors: [],
+      closureFiles: [],
+      documents: [],
+      tests: [],
+    });
+  }
+  const endpointAnchors = discovered.flatMap((f) =>
+    f.anchors
+      .filter((a) => (a.type === 'endpoint' || a.type === 'cli_command') && a.name !== undefined)
+      .map((a) => ({ featureId: f.id, name: a.name! })),
+  );
+  const anchorNodes = resolveAnchors(endpointAnchors, declaredAnchors, output.evidence);
+  const candidates = expandCandidates(anchorNodes, output.evidence);
+
   const fileAssetId = (path: string): string =>
     assetId({ type: isTestPath(path) ? 'test' : 'file', path });
 
@@ -244,6 +292,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // ---- Persist (step 9) ----------------------------------------------------
   const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
   const { db, sqlite } = openDatabase(dbPath);
+  let candidateDtos: CandidateDto[] = [];
   try {
     const projectId = projectIdFor(scan.repoRoot);
     db.insert(schema.projects)
@@ -272,6 +321,9 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
 
     // Content tables are rebuilt each scan (single-repo local tool).
     // features last: its join tables cascade.
+    // Candidate verdicts survive rescans (ADR-0003 §4): read them
+    // before the features delete cascades wipe feature_candidates.
+    const previousCandidates = db.select().from(schema.featureCandidates).all();
     db.delete(schema.features).run();
     db.delete(schema.evidence).run();
     db.delete(schema.commitFiles).run();
@@ -330,6 +382,57 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
 
     for (const feature of discovered) {
       insertFeature(db, feature, fileAssetId);
+    }
+
+    // ---- Candidate persistence (Milestones 7–8, ADR-0003 §4) ---------------
+    // Rescan re-derives suggestions but never silently overwrites
+    // accepted/rejected verdicts. Verdicts persist while their evidence
+    // fingerprint is stable; a changed chain means the relation is
+    // essentially new, so the verdict is surfaced as `superseded` for
+    // re-review instead of suppressing a new relation
+    // (docs/releases/v0.2-acceptance.md §4).
+    const previousById = new Map(previousCandidates.map((r) => [r.id, r]));
+    const currentFeatureIds = new Set(discovered.map((f) => f.id));
+    const derivedIds = new Set<string>();
+    for (const candidate of candidates) {
+      const id = candidateIdOf(candidate);
+      derivedIds.add(id);
+      const previous = previousById.get(id);
+      let status: CandidateDto['status'] = candidate.status;
+      if (previous && (previous.status === 'accepted' || previous.status === 'rejected')) {
+        status =
+          previous.fingerprint !== null && previous.fingerprint !== candidate.fingerprint
+            ? 'superseded'
+            : previous.status;
+      } else if (previous?.status === 'superseded') {
+        // Re-derived after drift: offer afresh for review.
+        status = 'suggested';
+      }
+      db.insert(schema.featureCandidates)
+        .values({
+          id,
+          featureId: candidate.featureId,
+          targetType: candidate.targetType,
+          targetId: candidate.targetId,
+          relation: candidate.relation,
+          status,
+          score: candidate.score,
+          distance: candidate.distance,
+          fanIn: candidate.fanIn,
+          evidenceChain: candidate.evidenceChain,
+          fingerprint: candidate.fingerprint,
+        })
+        .run();
+    }
+    for (const previous of previousCandidates) {
+      if (previous.status !== 'accepted' && previous.status !== 'rejected') continue;
+      if (derivedIds.has(previous.id)) continue;
+      if (!currentFeatureIds.has(previous.featureId)) continue;
+      // Evidence chain vanished: the verdict no longer maps to a live
+      // relation — keep the row but mark it for re-review.
+      db.insert(schema.featureCandidates)
+        .values({ ...previous, status: 'superseded' })
+        .run();
     }
 
     for (const commit of gitInfo.commits) {
@@ -404,6 +507,21 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       .set({ status: 'completed', finishedAt: new Date().toISOString() })
       .where(eq(schema.scans.id, scanId))
       .run();
+
+    candidateDtos = db
+      .select()
+      .from(schema.featureCandidates)
+      .all()
+      .map((r) => ({
+        featureId: r.featureId,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        relation: r.relation,
+        status: r.status,
+        score: r.score,
+        distance: r.distance,
+        fanIn: r.fanIn,
+      }));
   } finally {
     sqlite.close();
   }
@@ -430,6 +548,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       documents: scan.documents.length,
       instructions: 0,
       features: discovered.length,
+      candidates: candidateDtos.length,
       evidence: allEvidence.length,
       commits: gitInfo.commits.length,
     },
@@ -458,6 +577,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       confidence: f.confidence,
       health: { ...f.health },
     })),
+    candidates: candidateDtos,
     commits: gitInfo.commits.slice(0, 10).map((c) => ({
       sha: c.sha,
       author: c.author,
@@ -476,6 +596,15 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
 }
 
 type Db = ReturnType<typeof openDatabase>['db'];
+
+/** Deterministic candidate row id, stable across rescans. */
+function candidateIdOf(candidate: {
+  featureId: string;
+  targetType: string;
+  targetId: string;
+}): string {
+  return `cand:${candidate.featureId}:${candidate.targetType}:${candidate.targetId}`;
+}
 
 function insertFeature(db: Db, feature: DiscoveredFeature, fileAssetId: (path: string) => string): void {
   db.insert(schema.features)

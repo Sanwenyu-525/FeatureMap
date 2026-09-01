@@ -9,6 +9,7 @@
 export * from './types/entities.js';
 export * from './types/relations.js';
 export * from './types/health.js';
+export * from './types/anchors.js';
 export * from './confidence.js';
 export * from './paths.js';
 export * from './config.js';

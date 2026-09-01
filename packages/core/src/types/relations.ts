@@ -7,6 +7,7 @@
 export const RELATION_TYPES = [
   'IMPORTS',
   'CALLS',
+  'CONTAINS',
   'REFERENCES',
   'ROUTES_TO',
   'HANDLED_BY',

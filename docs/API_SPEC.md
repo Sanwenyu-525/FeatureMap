@@ -86,10 +86,26 @@ interface FeatureListItemDto {
 ### `GET /features/:id`
 
 Returns complete Feature Detail context: the feature list item fields
-plus `assets`, `documents` and the `BELONGS_TO_FEATURE` evidence chain
-with analyzer identity. Unknown ids return the
-`FEATURE_NOT_FOUND` error envelope. Feature ids contain `:` (for
-example `feature:login`); clients should URL-encode them.
+plus `assets`, `documents`, the scored `candidates` array (Milestone 7)
+and the `BELONGS_TO_FEATURE` evidence chain with analyzer identity.
+Unknown ids return the `FEATURE_NOT_FOUND` error envelope. Feature ids
+contain `:` (for example `feature:login`); clients should URL-encode
+them.
+
+### `POST /features/:id/candidates/verdict`
+
+Records a human verdict on a candidate (Milestone 8, ADR-0003 §4):
+
+```json
+{ "targetId": "src/shared/logger.ts", "verdict": "rejected" }
+```
+
+`verdict` must be `accepted` or `rejected`. Returns the updated row
+status. Errors use the standard envelope with codes
+`CANDIDATE_NOT_FOUND` (404), `AMBIGUOUS_TARGET` (400),
+`ANCHOR_NOT_REVIEWABLE` (400) and `FEATURE_NOT_FOUND` (404). Verdicts
+survive rescans; a changed evidence fingerprint marks the row
+`superseded` for re-review (docs/releases/v0.2-acceptance.md §4).
 
 ### `GET /features/:id/evidence`
 

@@ -57,33 +57,56 @@ program
 
 program
   .command('scan')
-  .description('扫描仓库并更新本地证据索引。')
+  .description('扫描仓库并更新本地证据索引。可传功能名以查看该功能的候选代码。')
+  .argument('[featureId]', '可选：功能名称或 ID（如 login），输出其候选代码')
   .option('--json', '输出机器可读的 JSON')
   .option('--full', '强制全量重扫')
   .option('--no-llm', '本次扫描禁用语义分析')
-  .action(async (opts: { json?: boolean; full?: boolean }) => {
+  .action(async (featureId: string | undefined, opts: { json?: boolean; full?: boolean }) => {
     try {
       const repoRoot = process.cwd();
       const result = await runScan(repoRoot, { json: opts.json, full: opts.full });
       if (opts.json) {
         console.log(JSON.stringify(result, null, 2));
-      } else {
-        console.log(`项目：${result.project.name}`);
-        console.log(`分支：${result.project.currentBranch ?? '未知'}`);
+        return;
+      }
+      console.log(`项目：${result.project.name}`);
+      console.log(`分支：${result.project.currentBranch ?? '未知'}`);
+      console.log('');
+      console.log('技术栈');
+      for (const t of result.technologies) console.log(`✓ ${t.id}`);
+      console.log('');
+      console.log(`文件：${result.counts.files}`);
+      console.log(`符号：${result.counts.symbols}`);
+      console.log(`端点：${result.counts.endpoints}`);
+      console.log(`文档：${result.counts.documents}`);
+      console.log(`功能：${result.counts.features}`);
+      console.log(`候选：${result.counts.candidates}`);
+      console.log(`证据：${result.counts.evidence}`);
+      console.log(`提交：${result.counts.commits}`);
+      console.log('');
+      console.log('分析器');
+      for (const run of result.runs) console.log(`✓ ${run.analyzerId}: ${run.status}`);
+
+      if (featureId !== undefined) {
+        const slug = featureId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const fid = `feature:${slug}`;
+        const feature = result.features.find((f) => f.id === fid);
+        if (!feature) {
+          console.error(`未知功能：${featureId}（feature:${slug}）。使用 featuremap scan 查看全部功能。`);
+          process.exitCode = 1;
+          return;
+        }
+        const candidates = result.candidates
+          .filter((c) => c.featureId === fid)
+          .sort((a, b) => b.score - a.score);
         console.log('');
-        console.log('技术栈');
-        for (const t of result.technologies) console.log(`✓ ${t.id}`);
-        console.log('');
-        console.log(`文件：${result.counts.files}`);
-        console.log(`符号：${result.counts.symbols}`);
-        console.log(`端点：${result.counts.endpoints}`);
-        console.log(`文档：${result.counts.documents}`);
-        console.log(`功能：${result.counts.features}`);
-        console.log(`证据：${result.counts.evidence}`);
-        console.log(`提交：${result.counts.commits}`);
-        console.log('');
-        console.log('分析器');
-        for (const run of result.runs) console.log(`✓ ${run.analyzerId}: ${run.status}`);
+        console.log(`功能 ${feature.name}（${fid}）的候选代码：`);
+        for (const c of candidates) {
+          const percent = `${Math.round(c.score * 100)}%`.padStart(4);
+          const relation = c.relation === 'owns' ? 'owns      ' : 'DEPENDS_ON';
+          console.log(`${percent}  ${c.status.padEnd(10)} ${relation}  ${c.targetId}`);
+        }
       }
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
@@ -189,6 +212,118 @@ program
       console.log('为什么？（证据链）：');
       for (const ev of evidence.slice(0, 20)) {
         console.log(`  ${ev.sourceId} → ${feature.name} (${ev.confidence}, ${ev.analyzerId})`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+/** Shared action for `accept` / `reject`. */
+function reviewAction(verdict: 'accepted' | 'rejected') {
+  return async (featureId: string, target: string) => {
+    try {
+      const { setVerdict } = await import('@featuremap/pipeline');
+      const row = setVerdict(process.cwd(), featureId, target, verdict);
+      const label = verdict === 'accepted' ? '已确认' : '已拒绝';
+      console.log(`${label}：${row.targetId}（${Math.round(row.score * 100)}%，${row.relation}）`);
+      console.log('重扫描将保留此决定；若其证据链变化会标记为 superseded 供重审。');
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  };
+}
+
+program
+  .command('accept')
+  .description('确认一个候选代码属于该功能。')
+  .argument('<featureId>', '功能名称或 ID（如 login）')
+  .argument('<target>', '候选 ID 或唯一符号名（如 src/auth/auth-service.ts:login）')
+  .action(reviewAction('accepted'));
+
+program
+  .command('reject')
+  .description('拒绝一个候选代码，重扫描后不再作为建议出现。')
+  .argument('<featureId>', '功能名称或 ID（如 login）')
+  .argument('<target>', '候选 ID 或唯一符号名')
+  .action(reviewAction('rejected'));
+
+program
+  .command('explain')
+  .description('解释系统为什么认为某候选代码属于该功能：完整证据链 + 置信度。')
+  .argument('<featureId>', '功能名称或 ID（如 login）')
+  .argument('<target>', '候选 ID 或唯一符号名')
+  .action(async (featureId: string, target: string) => {
+    try {
+      const { explainCandidate } = await import('@featuremap/pipeline');
+      const result = explainCandidate(process.cwd(), featureId, target);
+      console.log(`${result.targetId}  [${result.targetType}]`);
+      console.log('');
+      console.log(`状态：${result.status}    关系：${result.relation}    置信度：${Math.round(result.score * 100)}%    距离：${result.distance}    fan-in：${result.fanIn}`);
+      console.log('');
+      console.log('证据链：');
+      for (const step of result.chain) {
+        console.log(`  ${step.sourceId}`);
+        console.log(`    ↓ ${step.relationType} (${step.confidence})`);
+      }
+      console.log(`  ${result.targetId}`);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('inspect')
+  .description('查看某个文件的代码图邻域：包含符号、导出、导入、调用、被调用。')
+  .argument('<file>', '仓库相对路径（如 src/auth/login.js）')
+  .action(async (file: string) => {
+    try {
+      const { inspectFile } = await import('@featuremap/pipeline');
+      const result = inspectFile(process.cwd(), file.replaceAll('\\', '/'));
+      console.log(`${result.file}`);
+      console.log('');
+      console.log(`包含符号（${result.contains.length}）：`);
+      for (const c of result.contains) {
+        const name = c.symbolId.slice(c.symbolId.lastIndexOf(':') + 1);
+        console.log(`  [${c.kind}] ${name}`);
+      }
+      if (result.exports.length > 0) {
+        console.log('');
+        console.log(`导出（${result.exports.length}）：`);
+        for (const e of result.exports) {
+          console.log(`  ${e.slice(e.lastIndexOf(':') + 1)}`);
+        }
+      }
+      console.log('');
+      console.log(`导入（${result.imports.length}）：`);
+      for (const i of result.imports) console.log(`  → ${i}`);
+      if (result.importedBy.length > 0) {
+        console.log('');
+        console.log(`被导入（${result.importedBy.length}）：`);
+        for (const i of result.importedBy) console.log(`  ← ${i}`);
+      }
+      if (result.calls.length > 0) {
+        console.log('');
+        console.log(`调用（${result.calls.length}）：`);
+        for (const c of result.calls) {
+          console.log(`  ${c.sourceId} → ${c.targetId}（${c.confidence}，${c.analyzerId}）`);
+        }
+      }
+      if (result.calledBy.length > 0) {
+        console.log('');
+        console.log(`被调用（${result.calledBy.length}）：`);
+        for (const c of result.calledBy) {
+          console.log(`  ← ${c.sourceId}（${c.confidence}，${c.analyzerId}）`);
+        }
+      }
+      if (result.componentUsage.length > 0) {
+        console.log('');
+        console.log(`组件使用（${result.componentUsage.length}）：`);
+        for (const c of result.componentUsage) {
+          console.log(`  ${c.sourceId} → ${c.targetId}`);
+        }
       }
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));

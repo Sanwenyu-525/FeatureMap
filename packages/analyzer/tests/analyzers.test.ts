@@ -130,6 +130,100 @@ describe('markdown analyzer', () => {
   });
 });
 
+describe('code graph (v0.2.0)', () => {
+  it('emits deterministic CALLS evidence for named-import calls', async () => {
+    const result = await typescriptAnalyzer.analyze(context);
+    const calls = result.evidence.filter((e) => e.relationType === 'CALLS');
+    expect(evidenceOf(calls)).toContain(
+      'symbol:src/auth/login.js:loginHandler CALLS symbol:src/auth/user.js:findUserByEmail (1)',
+    );
+  });
+
+  it('emits CONTAINS evidence for declared symbols', async () => {
+    const result = await typescriptAnalyzer.analyze(context);
+    const contains = result.evidence.filter((e) => e.relationType === 'CONTAINS');
+    expect(evidenceOf(contains)).toContain(
+      'src/auth/login.js CONTAINS symbol:src/auth/login.js:loginHandler (1)',
+    );
+    expect(evidenceOf(contains)).toContain(
+      'src/auth/user.js CONTAINS symbol:src/auth/user.js:findUserByEmail (1)',
+    );
+  });
+
+  it('resolves synthetic TSX call, method and component-usage edges', async () => {
+    const files = {
+      'src/ui/LoginPage.tsx': [
+        "import { LoginForm } from './LoginForm';",
+        "import { api } from './client';",
+        '',
+        'export function LoginPage() {',
+        '  api.fetch();',
+        '  return <LoginForm onSubmit={() => api.fetch()} />;',
+        '}',
+        '',
+      ].join('\n'),
+      'src/ui/LoginForm.tsx': 'export function LoginForm(props: unknown) {\n  return null;\n}\n',
+      'src/ui/client.ts': 'export function fetch() {\n  return null;\n}\n',
+    };
+    const ctx: AnalyzeContext = {
+      repoRoot: '/synthetic',
+      files: Object.keys(files).map((path) => ({ path, hash: 'x', size: 0 })),
+      readFile: (p) => files[p],
+      config: { analyzers: ['typescript'], scan: { baseBranch: 'main', ignore: [] } },
+    };
+    const result = await typescriptAnalyzer.analyze(ctx);
+    const calls = result.evidence.filter((e) => e.relationType === 'CALLS');
+    // Property call through an imported binding: strong inference (0.9),
+    // deduplicated across the direct call and the inline arrow attribute.
+    expect(evidenceOf(calls)).toContain(
+      'symbol:src/ui/LoginPage.tsx:LoginPage CALLS symbol:src/ui/client.ts:fetch (0.9)',
+    );
+    const callTargets = calls.filter(
+      (e) => e.targetId === 'symbol:src/ui/client.ts:fetch',
+    );
+    expect(callTargets).toHaveLength(1);
+
+    // Method call through an imported binding: strong inference (0.9).
+    const methodCtx: AnalyzeContext = {
+      repoRoot: '/synthetic',
+      files: Object.keys(files).map((path) => ({ path, hash: 'x', size: 0 })),
+      readFile: (p) =>
+        p === 'src/ui/client.ts'
+          ? 'export class ApiClient {\n  fetch() {\n    return null;\n  }\n}\n'
+          : files[p],
+      config: { analyzers: ['typescript'], scan: { baseBranch: 'main', ignore: [] } },
+    };
+    const methodResult = await typescriptAnalyzer.analyze(methodCtx);
+    const methodCalls = methodResult.evidence.filter((e) => e.relationType === 'CALLS');
+    expect(evidenceOf(methodCalls)).toContain(
+      'symbol:src/ui/LoginPage.tsx:LoginPage CALLS symbol:src/ui/client.ts:fetch (0.9)',
+    );
+
+    // JSX component usage of an imported component.
+    const components = result.evidence.filter(
+      (e) => e.relationType === 'REFERENCES' && (e.metadata as { usage?: string }).usage === 'component',
+    );
+    expect(evidenceOf(components)).toContain(
+      'symbol:src/ui/LoginPage.tsx:LoginPage REFERENCES symbol:src/ui/LoginForm.tsx:LoginForm (1)',
+    );
+  });
+
+  it('emits class → method CONTAINS for unambiguous method names', async () => {
+    const ctx: AnalyzeContext = {
+      repoRoot: '/synthetic',
+      files: [{ path: 'src/service.ts', hash: 'x', size: 0 }],
+      readFile: () =>
+        'export class AuthService {\n  start() {\n    return 1;\n  }\n}\n',
+      config: { analyzers: ['typescript'], scan: { baseBranch: 'main', ignore: [] } },
+    };
+    const result = await typescriptAnalyzer.analyze(ctx);
+    const contains = result.evidence.filter((e) => e.relationType === 'CONTAINS');
+    expect(evidenceOf(contains)).toContain(
+      'symbol:src/service.ts:AuthService CONTAINS symbol:src/service.ts:start (1)',
+    );
+  });
+});
+
 describe('platform', () => {
   it('runs all analyzers and isolates failures without aborting the scan', async () => {
     const plugins = [typescriptAnalyzer, expressAnalyzer, prismaAnalyzer, markdownAnalyzer, nestjsAnalyzer];

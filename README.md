@@ -144,6 +144,11 @@ featuremap/
 featuremap init
 featuremap scan
 featuremap scan --json
+featuremap scan login        # 查看某功能的候选代码
+featuremap accept login src/auth/auth-service.ts:login   # 确认候选
+featuremap reject login src/shared/logger.ts             # 拒绝候选
+featuremap explain login findByEmail                     # 解释候选的证据链
+featuremap inspect src/auth/login.ts                     # 查看文件图邻域
 featuremap dev
 featuremap impact
 featuremap feature login

@@ -22,7 +22,8 @@
     "@featuremap/core": "workspace:*",
     "@featuremap/db": "workspace:*",
     "@featuremap/scanner": "workspace:*",
-    "drizzle-orm": "^0.38.3"
+    "drizzle-orm": "^0.38.3",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@featuremap/tsconfig": "workspace:*",

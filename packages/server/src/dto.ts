@@ -65,6 +65,7 @@ export interface FeatureDetailDto extends FeatureListItemDto {
   parentId?: string;
   assets: Array<{ id: string; type: string; path?: string; name?: string }>;
   documents: Array<{ path: string; title?: string }>;
+  candidates: CandidateDto[];
   evidence: Array<{
     id: string;
     relationType: string;
@@ -75,6 +76,30 @@ export interface FeatureDetailDto extends FeatureListItemDto {
     confidence: number;
     analyzerId: string;
   }>;
+}
+
+/** Candidate feature↔code relation with review state (Milestone 8). */
+export interface CandidateDto {
+  featureId: string;
+  targetType: 'file' | 'symbol';
+  targetId: string;
+  relation: 'owns' | 'DEPENDS_ON';
+  status: 'declared' | 'suggested' | 'accepted' | 'rejected' | 'superseded';
+  score: number;
+  distance: number;
+  fanIn: number;
+  evidenceChain: Array<{
+    relationType: string;
+    sourceId: string;
+    targetId: string;
+    confidence: number;
+  }>;
+}
+
+/** POST /features/:id/candidates/verdict */
+export interface VerdictRequest {
+  targetId: string;
+  verdict: 'accepted' | 'rejected';
 }
 
 /** GET /changes */
@@ -117,6 +142,9 @@ export const ERROR_CODES = [
   'PROJECT_NOT_INITIALIZED',
   'SCAN_FAILED',
   'FEATURE_NOT_FOUND',
+  'CANDIDATE_NOT_FOUND',
+  'AMBIGUOUS_TARGET',
+  'ANCHOR_NOT_REVIEWABLE',
   'INVALID_CONFIG',
   'GIT_UNAVAILABLE',
   'ANALYZER_FAILED',

@@ -11,14 +11,16 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { runScan, analyzeImpact } from '@featuremap/pipeline';
+import { runScan, analyzeImpact, setVerdict, ReviewError } from '@featuremap/pipeline';
 import type {
   AnalyzerStatusDto,
+  CandidateDto,
   ChangesResponse,
   FeatureDetailDto,
   FeatureListItemDto,
   OverviewResponse,
   ProjectResponse,
+  VerdictRequest,
 } from './dto.js';
 
 export interface BuildServerOptions {
@@ -195,6 +197,13 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
         confidence: e.confidence,
         analyzerId: e.analyzerId,
       }));
+    const candidates: CandidateDto[] = (
+      db
+        .select()
+        .from(schema.featureCandidates)
+        .where(eq(schema.featureCandidates.featureId, id))
+        .all() as CandidateDto[]
+    ).sort((a, b) => b.score - a.score);
     const body: FeatureDetailDto = {
       id: feature.id,
       name: feature.name,
@@ -206,9 +215,32 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       health: (feature.health ?? undefined) as FeatureDetailDto['health'],
       assets,
       documents,
+      candidates,
       evidence,
     };
     return body;
+  });
+
+  /** Record a human verdict on a candidate (Milestone 8, ADR-0003 §4). */
+  app.post('/api/features/:id/candidates/verdict', async (req, reply) => {
+    const id = decodeURIComponent((req.params as { id: string }).id);
+    const body = (req.body ?? {}) as Partial<VerdictRequest>;
+    if (body.verdict !== 'accepted' && body.verdict !== 'rejected') {
+      return fail(reply, 'INVALID_CONFIG', 'verdict must be "accepted" or "rejected".', 400);
+    }
+    if (typeof body.targetId !== 'string' || body.targetId === '') {
+      return fail(reply, 'INVALID_CONFIG', 'targetId is required.', 400);
+    }
+    try {
+      const row = setVerdict(options.repoRoot, id, body.targetId, body.verdict, dbPath);
+      return { status: row.status, targetId: row.targetId, featureId: row.featureId };
+    } catch (err) {
+      if (err instanceof ReviewError) {
+        const statusCode = err.code === 'FEATURE_NOT_FOUND' || err.code === 'CANDIDATE_NOT_FOUND' ? 404 : 400;
+        return fail(reply, err.code, err.message, statusCode);
+      }
+      throw err;
+    }
   });
 
   app.get('/api/features/:id/evidence', async (req, reply) => {

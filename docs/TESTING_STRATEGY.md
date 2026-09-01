@@ -65,6 +65,30 @@ Validate:
 
 Semantic outputs may allow bounded variation where model providers differ.
 
+### 4.1 Ground-truth fixtures and mapping quality (v0.2)
+
+`test-fixtures/01-simple-login` – `06-cross-feature` carry a
+`ground-truth.yaml` each: `expected` / `notExpected` symbol lists plus
+`expectedFiles` / `notExpectedFiles`, as defined in
+docs/releases/v0.2-acceptance.md §2.
+
+`@featuremap/pipeline` exports `loadGroundTruth`, `measureFileMapping`
+and `measureSymbolMapping` (packages/pipeline/src/mapping-quality.ts):
+they compare a scan's `BELONGS_TO_FEATURE` evidence against the ground
+truth and report Precision/Recall with the exact misclassified
+candidates. Candidates that are neither expected nor notExpected count
+as false positives (precision-first) and are listed as a ground-truth
+gap.
+
+File-level metrics run against the current engine; symbol-level
+metrics report `pending: true` until the anchor-driven candidate
+engine (Milestone 7) emits symbol-level mappings. The fixture tests
+pin the *current* engine's known gaps as regression baselines —
+01: shared-infrastructure precision pollution; 02: UI component tree
+unreachable from endpoint anchors; 03: tsconfig path aliases
+unresolved. When Milestone 7 lands, these flip into the Quality Gate
+thresholds (core fixtures Precision ≥ 85% / Recall ≥ 70%).
+
 ## 5. LLM tests
 
 Do not make core test suites depend on live external LLM APIs.

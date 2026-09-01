@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { DEFAULT_MINIMUM_IMPACT_CONFIDENCE } from './confidence.js';
+import { isAnchorType, type FeatureAnchor } from './types/anchors.js';
 
 /** Name of the project configuration file (docs/MVP_SPEC.md §6). */
 export const CONFIG_FILE_NAME = 'featuremap.yaml';
@@ -43,6 +44,12 @@ export interface FeatureMapConfig {
   };
   features: {
     seeds: string[];
+    /**
+     * User-declared feature anchors (ADR-0003 §1) for features without
+     * an HTTP surface. Endpoint-derived route anchors are automatic and
+     * keep precedence.
+     */
+    anchors: Array<FeatureAnchor & { feature: string }>;
   };
   llm: {
     enabled: boolean;
@@ -90,7 +97,7 @@ export function defaultConfig(projectName: string): FeatureMapConfig {
     project: { name: projectName },
     scan: { baseBranch: 'main', ignore: [...DEFAULT_IGNORE_RULES] },
     analyzers: { enabled: [...MVP_ANALYZER_IDS] },
-    features: { seeds: [] },
+    features: { seeds: [], anchors: [] },
     llm: { enabled: true, provider: 'openai' },
     web: { port: DEFAULT_WEB_PORT },
     impact: { minimumConfidence: DEFAULT_MINIMUM_IMPACT_CONFIDENCE },
@@ -145,6 +152,41 @@ export function validateConfig(input: unknown): { config?: FeatureMapConfig; iss
   const seeds = Array.isArray(features['seeds'])
     ? features['seeds'].filter((s): s is string => typeof s === 'string')
     : [];
+  const anchors: Array<FeatureAnchor & { feature: string }> = [];
+  if (Array.isArray(features['anchors'])) {
+    for (const entry of features['anchors']) {
+      if (entry === null || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      const feature = e['feature'];
+      const type = e['type'];
+      const target = e['target'];
+      if (typeof feature !== 'string' || feature === '') {
+        issues.push({
+          level: 'error',
+          code: 'INVALID_CONFIG',
+          message: 'features.anchors entries require a "feature" name.',
+        });
+        continue;
+      }
+      if (typeof type !== 'string' || !isAnchorType(type)) {
+        issues.push({
+          level: 'error',
+          code: 'INVALID_CONFIG',
+          message: `features.anchors entry for "${feature}" has an unknown anchor type (expected file | symbol | route | component).`,
+        });
+        continue;
+      }
+      if (typeof target !== 'string' || target === '') {
+        issues.push({
+          level: 'error',
+          code: 'INVALID_CONFIG',
+          message: `features.anchors entry for "${feature}" requires a "target".`,
+        });
+        continue;
+      }
+      anchors.push({ feature, type, target });
+    }
+  }
 
   const llm = (typeof raw['llm'] === 'object' && raw['llm'] !== null ? raw['llm'] : {}) as Record<string, unknown>;
   const llmEnabled = typeof llm['enabled'] === 'boolean' ? llm['enabled'] : false;
@@ -180,7 +222,7 @@ export function validateConfig(input: unknown): { config?: FeatureMapConfig; iss
       project: { name: projectName as string },
       scan: { baseBranch, ignore },
       analyzers: { enabled: enabledAnalyzers },
-      features: { seeds },
+      features: { seeds, anchors },
       llm: { enabled: llmEnabled, provider: llmProvider },
       web: { port },
       impact: { minimumConfidence },

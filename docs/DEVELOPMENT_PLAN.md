@@ -159,6 +159,130 @@ Exit criteria:
 
 A coding agent can resolve a feature-level task using FeatureMap context while reading fewer unrelated files than a naive exploration baseline.
 
+## Milestone 6 — Code Graph (v0.2.0) — ✅ Complete
+
+Status: complete. TypeScript analyzer emits CONTAINS (file→symbol,
+class→method), resolved CALLS (symbol→symbol, direct 1.0 / method
+0.9), JSX component usage as REFERENCES (`metadata.usage: 'component'`)
+plus IMPORTS; `featuremap inspect <file>` reports the evidence-backed
+graph neighborhood.
+
+Goal: answer "how is the code related?" at symbol level. See ADR-0003.
+
+Implement:
+
+- `CONTAINS` edges (file→symbol, class→method)
+- `CALLS` edges (resolved call expressions, symbol→symbol)
+- React component usage edges (JSX → imported component symbol)
+- `featuremap inspect <file>` — exports, imports, calls, called-by, references
+
+Exit criteria:
+
+A fixture file's inspect output deterministically lists its graph
+neighborhood with evidence for every edge.
+
+## Milestone 7 — Feature Anchors & Candidate Scoring (v0.2.1–v0.2.2) — ✅ Complete
+
+Status: complete. `FeatureAnchor` type in core; declared anchors via
+`featuremap.yaml` `features.anchors`; anchor-driven expansion
+(packages/pipeline/src/candidates.ts) with depth ≤ 3, distance decay,
+fan-in penalty, owns/DEPENDS_ON separation and explainable evidence
+chains; candidates persisted as declared/suggested in
+`feature_candidates` with verdict-preserving rescans; `featuremap scan
+<featureId>` prints ranked candidates. Known calibration item: the
+fan-in penalty does not bind at single-feature fixture scale — it is
+quantified by the shared-infrastructure fixtures (04–06) of the
+Quality Gate suite.
+
+Goal: expand features from anchors with scored, explainable candidates.
+
+Implement:
+
+- `FeatureAnchor` type (file / symbol / route / component) plus manual
+  anchor declaration for non-endpoint features
+- graph traversal from anchors (depth ≤ 3)
+- rule-based scoring: anchor bonus, direct call/import/component usage,
+  distance decay, fan-in penalty for shared infrastructure
+- `owns` vs `DEPENDS_ON` separation (ADR-0003 §3)
+- candidate relations persisted as `suggested`
+
+CLI:
+
+```bash
+featuremap scan <featureId>
+```
+
+Exit criteria:
+
+Fixture repos produce scored candidates where shared infrastructure
+(logger, config) does not surface as feature ownership.
+
+## Milestone 8 — Review Workflow (v0.2.3) — ✅ Complete
+
+Status: complete. `featuremap accept|reject <featureId> <target>`
+(packages/pipeline/src/review.ts) with precise error envelopes;
+`featuremap explain` renders the full evidence chain behind a score;
+Suggestions panel with accept/reject in the Feature Detail page
+backed by `POST /api/features/:id/candidates/verdict`; verdicts
+persist across rescans while their evidence fingerprint is stable, and
+changed/vanished chains mark rows `superseded` for re-review
+(docs/releases/v0.2-acceptance.md §4). Deferred: accepted candidates
+feeding the derived feature-health dimensions (P2, needs an
+explainable rule before wiring).
+
+Goal: close the loop between suggestions and human judgment.
+
+Implement:
+
+- relation status state machine: declared / suggested / accepted /
+  rejected (ADR-0003 §4)
+- `featuremap accept|reject <featureId> <target>`
+- `featuremap explain <featureId> <target>` — evidence chain with
+  confidence
+- Suggestions panel in the Feature Detail page (accept/reject from UI)
+- rejected relations stay suppressed across rescans unless their
+  evidence chain changes
+
+Exit criteria:
+
+A rejected shared-utility candidate never reappears in suggestions;
+an accepted candidate survives rescans and counts toward feature
+health.
+
+## Milestone 9 — Incremental Scan (v0.2.4)
+
+Goal: make rescans fast enough for daily use.
+
+Implement:
+
+- graph cache keyed by file hash (extends existing scanner hash cache)
+- changed-file detection with partial graph rebuild
+- ignore/generated-file rules feeding both scanner and graph
+
+Exit criteria:
+
+On a project with few changed files, an incremental rescan rebuilds
+only affected graph nodes and produces identical evidence for
+unchanged regions.
+
+## Mapping quality (cross-cutting, starts with Milestone 6)
+
+Fixture repositories with ground-truth feature mappings
+(expected/notExpected symbol lists) measured as Precision/Recall.
+Precision first (ADR-0003 §5): target > 80% precision on core features
+before optimizing recall.
+
+## v0.2 Release Gate
+
+Release is judged against `docs/releases/v0.2-acceptance.md`, not by
+milestone completion alone. It defines the Blocker checklist (anchors,
+code graph, evidence, review loop, resolution, incremental scan), the
+Quality Gate thresholds (core fixtures Precision ≥ 85% / Recall ≥ 70%,
+all-fixture average Precision ≥ 80% / Recall ≥ 65%, shared-infra
+false-positive rate < 10%), the Performance Gate (baseline-first,
+calibrated), the end-to-end acceptance scenario, and the usability /
+dogfooding checks.
+
 ## Recommended build order inside Milestone 1
 
 1. filesystem scanner
