@@ -23,6 +23,7 @@
     "@featuremap/db": "workspace:*",
     "@featuremap/scanner": "workspace:*",
     "drizzle-orm": "^0.38.3",
+    "execa": "^9.5.2",
     "yaml": "^2.6.1"
   },
   "devDependencies": {

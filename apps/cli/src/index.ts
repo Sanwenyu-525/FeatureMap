@@ -340,6 +340,43 @@ program
   });
 
 program
+  .command('git')
+  .description('Git 变更模型子命令（Phase 3，ADR-0004）。')
+  .command('inspect')
+  .description('查看某提交的变更模型：元信息、变更文件、变更符号（diff hunk 行区间 ∩ 符号区间）。')
+  .argument('<commit-ish>', '提交引用（如 HEAD、HEAD~2、完整 SHA）')
+  .action(async (commitIsh: string) => {
+    try {
+      const { inspectCommit } = await import('@featuremap/pipeline');
+      const r = await inspectCommit(process.cwd(), commitIsh);
+      console.log(`提交：${r.sha}`);
+      console.log(`作者：${r.author ?? '未知'} <${r.email ?? ''}>`);
+      console.log(`时间：${r.committedAt ?? '未知'}`);
+      if (r.message) console.log(`信息：${r.message}`);
+      if (r.approximate) {
+        console.log('⚠ 该提交不是当前 HEAD：变更符号按最新扫描的行号匹配，可能已漂移（approximate）。');
+      }
+      console.log('');
+      console.log(`变更文件（${r.changedFiles.length}）：`);
+      for (const f of r.changedFiles) {
+        console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
+      }
+      console.log('');
+      console.log(`变更符号（${r.changedSymbols.length}）：`);
+      for (const s of r.changedSymbols) {
+        const name = s.symbolId.slice(s.symbolId.lastIndexOf(':') + 1);
+        console.log(`  ${name}  [${s.kind}] ${s.path}:${s.startLine}-${s.endLine}（行 ${s.lines.join(', ')}）`);
+      }
+      if (r.changedSymbols.length === 0) {
+        console.log('  （该提交的变更行未命中已扫描的符号区间；可能仅改动导入/导出或数据行）');
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('mcp')
   .description('以 stdio 方式运行 FeatureMap MCP 服务器。')
   .action(async () => {

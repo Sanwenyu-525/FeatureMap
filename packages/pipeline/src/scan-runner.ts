@@ -202,7 +202,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   );
 
   // Git facts (degrades gracefully without git)
-  const gitInfo = await collectGitInfo(scan.repoRoot, config.scan.baseBranch);
+  const gitInfo = await collectGitInfo(scan.repoRoot, config.scan.baseBranch, config.git.logLimit);
 
   // ---- Derived artifacts -------------------------------------------------
   const symbols = collectSymbols(output);

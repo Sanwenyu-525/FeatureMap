@@ -39,6 +39,11 @@ export interface FeatureMapConfig {
     baseBranch: string;
     ignore: string[];
   };
+  /** Git-related settings (Phase 3 / ADR-0004 §1). */
+  git: {
+    /** Commit-log window collected during a scan (docs/DEVELOPMENT_PLAN.md Milestone 10). */
+    logLimit: number;
+  };
   analyzers: {
     enabled: AnalyzerId[];
   };
@@ -94,11 +99,15 @@ export const DEFAULT_IGNORE_RULES = [
   'test-fixtures/**',
 ];
 
+/** Default git commit-log window (docs/DEVELOPMENT_PLAN.md Milestone 10). */
+export const DEFAULT_GIT_LOG_LIMIT = 200;
+
 /** Produce the default configuration used by `featuremap init`. */
 export function defaultConfig(projectName: string): FeatureMapConfig {
   return {
     project: { name: projectName },
     scan: { baseBranch: 'main', ignore: [...DEFAULT_IGNORE_RULES] },
+    git: { logLimit: DEFAULT_GIT_LOG_LIMIT },
     analyzers: { enabled: [...MVP_ANALYZER_IDS] },
     features: { seeds: [], anchors: [] },
     llm: { enabled: true, provider: 'openai' },
@@ -140,6 +149,21 @@ export function validateConfig(input: unknown): { config?: FeatureMapConfig; iss
         level: 'error',
         code: 'MISSING_MANDATORY_IGNORE',
         message: `scan.ignore must include "${mandatory}" (see SECURITY.md).`,
+      });
+    }
+  }
+
+  const git = (typeof raw['git'] === 'object' && raw['git'] !== null ? raw['git'] : {}) as Record<string, unknown>;
+  let logLimit = DEFAULT_GIT_LOG_LIMIT;
+  if (typeof git['logLimit'] === 'number') {
+    const v = git['logLimit'];
+    if (Number.isInteger(v) && v >= 1 && v <= 5000) {
+      logLimit = v;
+    } else {
+      issues.push({
+        level: 'error',
+        code: 'INVALID_CONFIG',
+        message: 'git.logLimit must be an integer within [1, 5000].',
       });
     }
   }
@@ -224,6 +248,7 @@ export function validateConfig(input: unknown): { config?: FeatureMapConfig; iss
     config: {
       project: { name: projectName as string },
       scan: { baseBranch, ignore },
+      git: { logLimit },
       analyzers: { enabled: enabledAnalyzers },
       features: { seeds, anchors },
       llm: { enabled: llmEnabled, provider: llmProvider },
