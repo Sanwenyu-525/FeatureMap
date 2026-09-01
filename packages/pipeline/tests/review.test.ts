@@ -135,16 +135,19 @@ describe('review workflow on fixture 01', () => {
     await runScan(root, { dbPath });
     setVerdict(root, 'login', 'src/shared/logger.ts', 'rejected', dbPath);
 
-    // Simulate code change: drop the logger import from auth-service so
-    // the rejected file's evidence chain changes shape.
+    // Simulate code change: drop every logger import (auth-service and
+    // user-repository both reference it) so the rejected file's evidence
+    // chain changes shape completely. Fixture files use CRLF on Windows,
+    // so the match must tolerate both line endings.
     const authServicePath = join(root, 'src/auth/auth-service.ts');
-    const original = readFileSync(authServicePath, 'utf8');
+    const userRepositoryPath = join(root, 'src/auth/user-repository.ts');
+    const originalAuth = readFileSync(authServicePath, 'utf8');
+    const originalUser = readFileSync(userRepositoryPath, 'utf8');
+    const stripLoggerImport = (src: string): string =>
+      src.replace(/import \{ logger \} from '\.\.\/shared\/logger';\r?\n/g, '');
     try {
-      writeFileSync(
-        authServicePath,
-        original.replace("import { logger } from '../shared/logger';\n", '').replace("    logger.info('login attempt');\n", ''),
-        'utf8',
-      );
+      writeFileSync(authServicePath, stripLoggerImport(originalAuth), 'utf8');
+      writeFileSync(userRepositoryPath, stripLoggerImport(originalUser), 'utf8');
       await runScan(root, { dbPath });
 
       const candidates = listCandidates(root, 'login', dbPath);
@@ -154,7 +157,8 @@ describe('review workflow on fixture 01', () => {
       // suppressed forever.
       expect(loggerFile?.status).toBe('superseded');
     } finally {
-      writeFileSync(authServicePath, original, 'utf8');
+      writeFileSync(authServicePath, originalAuth, 'utf8');
+      writeFileSync(userRepositoryPath, originalUser, 'utf8');
     }
   });
 });
