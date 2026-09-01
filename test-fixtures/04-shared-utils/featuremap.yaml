@@ -1,0 +1,15 @@
+project:
+  name: shared-utils
+
+scan:
+  ignore:
+    - .env
+
+features:
+  anchors:
+    - feature: billing
+      type: file
+      target: src/billing/billing-handler.ts
+    - feature: notification
+      type: file
+      target: src/notification/notification-handler.ts

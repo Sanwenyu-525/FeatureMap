@@ -104,6 +104,18 @@ describe('review workflow on fixture 01', () => {
     expect(explained.chain.at(-1)?.targetId).toBe('src/auth/user-repository.ts:findByEmail');
   });
 
+  it('explain resolves qualified Class.member names through CONTAINS evidence (acceptance §5)', () => {
+    const explained = explainCandidate(
+      join(FIXTURES_ROOT, '01-simple-login'),
+      'login',
+      'UserRepository.findByEmail', // qualified name, acceptance §5 step 6
+      fixtureDb(),
+    );
+    expect(explained.targetId).toBe('src/auth/user-repository.ts:findByEmail');
+    expect(explained.targetType).toBe('symbol');
+    expect(explained.chain.length).toBeGreaterThan(0);
+  });
+
   it('rejecting declared anchors and unknown targets fails clearly', () => {
     expect(() =>
       setVerdict(join(FIXTURES_ROOT, '01-simple-login'), 'login', 'src/server.ts', 'rejected', fixtureDb()),

@@ -1,0 +1,12 @@
+﻿node : 
+At line:15 char:5197
++ ... pgrep\bin'; node scripts/measure-pr.mjs d:\Develop\dify\web docs\repo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+=== Per-feature summary ===
+signin                 P=16% R=67% candidates=61 fp=51 fn=5 unclassified=50
+explore                P=6% R=13% candidates=99 fp=93 fn=39 unclassified=92
+
+Average precision=11.2% recall=40.0% over 2 features

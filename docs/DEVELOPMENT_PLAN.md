@@ -296,6 +296,12 @@ false-positive rate < 10%), the Performance Gate (baseline-first,
 calibrated), the end-to-end acceptance scenario, and the usability /
 dogfooding checks.
 
+Status: the Blocker checklist is fully verified (2026-09-01, see
+`docs/reports/v0.2-release-gate-2026-09-01.md`), the §5 end-to-end
+scenario and §7 dogfooding pass, and the six-fixture Quality Gate
+suite (01–06, including the shared-infrastructure fixture 04) is in
+place with fixture-level assertions pinning shared-infra behavior.
+
 ## Recommended build order inside Milestone 1
 
 1. filesystem scanner

@@ -342,6 +342,35 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // ---- Persist (step 9) ----------------------------------------------------
   let candidateDtos: CandidateDto[] = [];
   try {
+    // Acceptance §1 Blocker: a declared anchor that resolves to nothing is
+    // a configuration error — fail with a clear message instead of
+    // silently producing zero candidates for the feature. Route anchors
+    // are excluded: an endpoint that vanished in a refactor is a normal
+    // lifecycle event, not a config mistake. (Inside the try so the
+    // database handle is released on the error path.)
+    {
+      const filePaths = new Set(scan.files.map((f) => f.path));
+      const symbolIds = new Set(symbols.map((s) => s.id));
+      for (const anchor of config.features.anchors) {
+        if (anchor.type === 'file') {
+          if (!filePaths.has(anchor.target)) {
+            throw new Error(
+              `Anchor error: file "${anchor.target}" (feature "${anchor.feature}") is not in the scanned file inventory. Check the anchors block in featuremap.yaml.`,
+            );
+          }
+        } else if (anchor.type === 'symbol' || anchor.type === 'component') {
+          const bare = anchor.target.startsWith('symbol:')
+            ? anchor.target.slice('symbol:'.length)
+            : anchor.target;
+          if (!symbolIds.has(`symbol:${bare}`)) {
+            throw new Error(
+              `Anchor error: symbol "${anchor.target}" (feature "${anchor.feature}") was not found by the analyzers. Verify the symbol exists and is parsed (exported symbols resolve best).`,
+            );
+          }
+        }
+      }
+    }
+
     const projectId = projectIdFor(scan.repoRoot);
     db.insert(schema.projects)
       .values({

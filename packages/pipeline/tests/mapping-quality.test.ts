@@ -347,4 +347,78 @@ describe('mapping-quality fixtures (current-engine regression baseline)', () => 
     expect(logoutSymbols.falsePositives).not.toContain('SessionService.create');
     expect(logoutSymbols.falsePositives).not.toContain('login');
   });
+
+  it('04-shared-utils: shared infrastructure is down-weighted, never ownership', async () => {
+    const root = fixtureRoot('04-shared-utils');
+    const scan = await runScan(root, { dbPath: tempDbPath() });
+    const billingTruth = loadGroundTruth(root);
+    const notificationTruth = loadGroundTruth(root, 'ground-truth.notification.yaml');
+
+    const byId = new Map(
+      scan.candidates.map((c) => [`${c.featureId}|${c.targetId}`, c]),
+    );
+    const sharedFiles = ['src/shared/logger.ts', 'src/shared/config.ts', 'src/shared/http-client.ts'];
+
+    for (const featureId of ['feature:billing', 'feature:notification']) {
+      // Blocker: shared infrastructure never surfaces as ownership.
+      for (const shared of sharedFiles) {
+        const fileCandidate = byId.get(`${featureId}|${shared}`);
+        expect(fileCandidate?.relation).toBe('DEPENDS_ON');
+        // The config/http-client imports are only 2 features deep, so the
+        // soft cap does not bind (documented calibration item); the
+        // highest-fan-in file (logger, 6 importers) must drop below 50%.
+        if (shared === 'src/shared/logger.ts') {
+          expect(fileCandidate?.score ?? 1).toBeLessThan(0.5);
+        }
+      }
+
+      // Cross-feature isolation: the other feature's code never appears.
+      const other =
+        featureId === 'feature:billing'
+          ? ['src/notification/notification-handler.ts', 'src/notification/notification.ts']
+          : ['src/billing/billing-handler.ts', 'src/billing/billing.ts'];
+      for (const leak of other) {
+        expect(byId.has(`${featureId}|${leak}`)).toBe(false);
+      }
+      // The composition hub is never pulled in from below.
+      expect(byId.has(`${featureId}|src/server.ts`)).toBe(false);
+    }
+
+    // Granularity rule: file-level P/R measures the endpoint-anchored
+    // discovery engine (fixture 02 note); fixture 04 declares file
+    // anchors and has no endpoints, so the file engine yields nothing
+    // and the candidate engine below is the acceptance target.
+    const billingFiles = measureFileMapping(scan, billingTruth);
+    expect(billingFiles.candidates).toEqual([]);
+    const notificationFiles = measureFileMapping(scan, notificationTruth);
+    expect(notificationFiles.candidates).toEqual([]);
+
+    // Symbol level: own chains complete; the only shared symbols that
+    // surface are the ones actually called (log, HttpClient.post) — as
+    // DEPENDS_ON candidates, the reject-flow target population.
+    const billingSymbols = measureSymbolMapping(scan, billingTruth);
+    expect(billingSymbols.pending).toBe(false);
+    expect(billingSymbols.truePositives).toEqual(
+      expect.arrayContaining([
+        'billingHandler',
+        'Billing.run',
+        'InvoiceService.createInvoice',
+        'InvoiceRepository.save',
+      ]),
+    );
+    expect(billingSymbols.recall).toBe(1);
+    expect(billingSymbols.falsePositives).toEqual(
+      expect.arrayContaining(['log', 'HttpClient.post']),
+    );
+    const notificationSymbols = measureSymbolMapping(scan, notificationTruth);
+    expect(notificationSymbols.truePositives).toEqual(
+      expect.arrayContaining([
+        'notificationHandler',
+        'Notification.dispatch',
+        'NotificationService.send',
+        'NotificationRepository.record',
+      ]),
+    );
+    expect(notificationSymbols.recall).toBe(1);
+  });
 });

@@ -1,0 +1,31 @@
+feature: notification
+anchors:
+  - type: file
+    target: src/notification/notification-handler.ts
+expected:
+  - notificationHandler
+  - Notification.dispatch
+  - NotificationService.send
+  - NotificationRepository.record
+notExpected:
+  - log
+  - config
+  - HttpClient.post
+  - Billing.run
+  - InvoiceService.createInvoice
+  - InvoiceRepository.save
+  - billingHandler
+expectedFiles:
+  - src/notification/notification-handler.ts
+  - src/notification/notification.ts
+  - src/notification/notification-service.ts
+  - src/notification/notification-repository.ts
+notExpectedFiles:
+  - src/shared/logger.ts
+  - src/shared/config.ts
+  - src/shared/http-client.ts
+  - src/billing/billing.ts
+  - src/billing/billing-handler.ts
+  - src/billing/invoice-service.ts
+  - src/billing/invoice-repository.ts
+  - src/server.ts

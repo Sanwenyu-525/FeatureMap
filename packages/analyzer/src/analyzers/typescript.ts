@@ -92,7 +92,10 @@ export function resolveSpecifier(
   }
   if (resolution.baseUrl) candidates.push(specifier);
   for (const base of candidates) {
-    const normalized = normalizePath(base.replace(/\\/g, '/'));
+    // tsconfig paths targets are commonly written as `./*` (dify) or
+    // `src/*` (fixture 03): normalize away a leading `./` so the
+    // file-set lookup matches repo-relative ids (real-project finding).
+    const normalized = normalizePath(base.replace(/\\/g, '/')).replace(/^\.\//, '');
     for (const candidate of candidatePaths(normalized)) {
       if (fileSet.has(candidate)) return candidate;
     }

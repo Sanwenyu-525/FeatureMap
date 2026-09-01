@@ -1,0 +1,82 @@
+{
+  "features": [
+    {
+      "feature": "signin",
+      "expectedFiles": [
+        "app/signin/_header.tsx",
+        "app/signin/check-code/page.tsx",
+        "app/signin/components/mail-and-code-auth.tsx",
+        "app/signin/components/mail-and-password-auth.tsx",
+        "app/signin/components/social-auth.tsx",
+        "app/signin/components/sso-auth.tsx",
+        "app/signin/invite-settings/page.tsx",
+        "app/signin/layout.tsx",
+        "app/signin/normal-form.tsx",
+        "app/signin/one-more-step.tsx",
+        "app/signin/page.tsx",
+        "app/signin/split.tsx",
+        "app/signin/utils/post-login-redirect.ts",
+        "app/components/signin/countdown.spec.tsx",
+        "app/components/signin/countdown.tsx"
+      ],
+      "notExpectedFiles": [
+        "app/signup/page.tsx",
+        "service/base.ts"
+      ]
+    },
+    {
+      "feature": "explore",
+      "expectedFiles": [
+        "app/components/explore/app-card/index.spec.tsx",
+        "app/components/explore/app-card/index.tsx",
+        "app/components/explore/app-list/index.spec.tsx",
+        "app/components/explore/app-list/index.tsx",
+        "app/components/explore/banner/banner-item.spec.tsx",
+        "app/components/explore/banner/banner-item.tsx",
+        "app/components/explore/banner/banner.spec.tsx",
+        "app/components/explore/banner/banner.tsx",
+        "app/components/explore/banner/indicator-button.spec.tsx",
+        "app/components/explore/banner/indicator-button.tsx",
+        "app/components/explore/category.spec.tsx",
+        "app/components/explore/category.tsx",
+        "app/components/explore/create-app-modal/index.spec.tsx",
+        "app/components/explore/create-app-modal/index.tsx",
+        "app/components/explore/index.spec.tsx",
+        "app/components/explore/index.tsx",
+        "app/components/explore/installed-app/index.spec.tsx",
+        "app/components/explore/installed-app/index.tsx",
+        "app/components/explore/item-operation/index.spec.tsx",
+        "app/components/explore/item-operation/index.tsx",
+        "app/components/explore/sidebar/app-nav-item/index.spec.tsx",
+        "app/components/explore/sidebar/app-nav-item/index.tsx",
+        "app/components/explore/sidebar/index.spec.tsx",
+        "app/components/explore/sidebar/index.tsx",
+        "app/components/explore/sidebar/no-apps/index.tsx",
+        "app/components/explore/try-app/app-info/index.spec.tsx",
+        "app/components/explore/try-app/app-info/index.tsx",
+        "app/components/explore/try-app/app-info/use-get-requirements.spec.ts",
+        "app/components/explore/try-app/app-info/use-get-requirements.ts",
+        "app/components/explore/try-app/app/chat.spec.tsx",
+        "app/components/explore/try-app/app/chat.tsx",
+        "app/components/explore/try-app/app/index.spec.tsx",
+        "app/components/explore/try-app/app/index.tsx",
+        "app/components/explore/try-app/app/text-generation.spec.tsx",
+        "app/components/explore/try-app/app/text-generation.tsx",
+        "app/components/explore/try-app/index.spec.tsx",
+        "app/components/explore/try-app/index.tsx",
+        "app/components/explore/try-app/preview/basic-app-preview.spec.tsx",
+        "app/components/explore/try-app/preview/basic-app-preview.tsx",
+        "app/components/explore/try-app/preview/flow-app-preview.spec.tsx",
+        "app/components/explore/try-app/preview/flow-app-preview.tsx",
+        "app/components/explore/try-app/preview/index.spec.tsx",
+        "app/components/explore/try-app/preview/index.tsx",
+        "app/components/explore/try-app/tab.spec.tsx",
+        "app/components/explore/try-app/tab.tsx"
+      ],
+      "notExpectedFiles": [
+        "app/components/apps/app-card/index.tsx",
+        "service/base.ts"
+      ]
+    }
+  ]
+}

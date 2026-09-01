@@ -30,6 +30,8 @@ describe('defaultConfig', () => {
     expect(config.impact.minimumConfidence).toBe(0.65);
     expect(config.scan.ignore).toContain('.env');
     expect(config.scan.ignore).toContain('.env.*');
+    // Rust/Tauri build output must never be scanned (real-repo finding).
+    expect(config.scan.ignore).toContain('target/**');
     expect(config.analyzers.enabled).toContain('typescript');
     expect(config.analyzers.enabled).toContain('markdown');
   });

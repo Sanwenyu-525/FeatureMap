@@ -84,6 +84,9 @@ export const DEFAULT_IGNORE_RULES = [
   'coverage/**',
   '.next/**',
   '.git/**',
+  // Rust/Tauri build output (found measuring the AI_Manga real repo:
+  // the target/ tree is multi-GB and must never be scanned).
+  'target/**',
   '.env',
   '.env.*',
   // Fixture repositories are test inputs, not product features

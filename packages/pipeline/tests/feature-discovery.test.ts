@@ -5,7 +5,7 @@
  *   Login  [Authentication]  from POST /api/login + handler closure
  *   Users  [Generic]         from GET /api/users
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -176,5 +176,69 @@ describe('deterministic ids', () => {
     expect(assetId({ type: 'file', path: 'src/app.js' })).toBe(
       assetId({ type: 'file', path: 'src/app.js' }),
     );
+  });
+});
+
+describe('declared anchor validation (acceptance §1 Blocker)', () => {
+  const fixture01 = fixtureRoot.replace('react-express-basic', '01-simple-login');
+
+  function tempCopy(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'featuremap-anchor-'));
+    cpSync(fixture01, dir, { recursive: true });
+    return dir;
+  }
+
+  it('a non-existent file anchor fails with a clear error', async () => {
+    const dir = tempCopy();
+    try {
+      writeFileSync(
+        join(dir, 'featuremap.yaml'),
+        [
+          'project:',
+          '  name: simple-login',
+          'scan:',
+          '  ignore:',
+          '    - .env',
+          'features:',
+          '  anchors:',
+          '    - feature: login',
+          '      type: file',
+          '      target: src/auth/does-not-exist.ts',
+        ].join('\n'),
+        'utf8',
+      );
+      await expect(runScan(dir, { dbPath: join(dir, 'db.sqlite') })).rejects.toThrow(
+        /Anchor error: file "src\/auth\/does-not-exist\.ts"/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a non-existent symbol anchor fails with a clear error', async () => {
+    const dir = tempCopy();
+    try {
+      writeFileSync(
+        join(dir, 'featuremap.yaml'),
+        [
+          'project:',
+          '  name: simple-login',
+          'scan:',
+          '  ignore:',
+          '    - .env',
+          'features:',
+          '  anchors:',
+          '    - feature: login',
+          '      type: symbol',
+          '      target: symbol:src/auth/login.ts:NoSuchSymbol',
+        ].join('\n'),
+        'utf8',
+      );
+      await expect(runScan(dir, { dbPath: join(dir, 'db.sqlite') })).rejects.toThrow(
+        /Anchor error: symbol "symbol:src\/auth\/login\.ts:NoSuchSymbol"/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
