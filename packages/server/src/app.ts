@@ -7,7 +7,7 @@
 import { eq, desc, sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { runScan } from '@featuremap/pipeline';
+import { runScan, analyzeImpact } from '@featuremap/pipeline';
 import type {
   AnalyzerStatusDto,
   ChangesResponse,
@@ -210,31 +210,20 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     if (!project) {
       return fail(reply, 'PROJECT_NOT_INITIALIZED', 'Run "featuremap init" and "featuremap scan" first.', 404);
     }
-    const workingChanges = db
-      .select()
-      .from(schema.commitFiles)
-      .where(eq(schema.commitFiles.commitSha, 'WORKING_TREE'))
-      .all();
-    const latestScan = db
-      .select()
-      .from(schema.scans)
-      .orderBy(desc(schema.scans.startedAt))
-      .limit(1)
-      .all()[0];
-    const stats = (latestScan?.stats ?? {}) as { currentBranch?: string };
-    // Impact traversal over evidence-backed relations arrives in
-    // Milestone 4 (docs/DEVELOPMENT_PLAN.md); until then affected
-    // features stay empty instead of guessing.
+    // Impact traversal over evidence-backed relations only
+    // (AGENTS.md §9); low-confidence hits stay unsurfaced.
+    const impact = analyzeImpact(options.repoRoot, dbPath);
     const body: ChangesResponse = {
-      currentBranch: stats.currentBranch,
-      baseBranch: project.baseBranch,
-      changedFiles: workingChanges.map((c) => ({
-        path: c.path,
-        changeType: c.changeType,
-        commitSha: c.commitSha,
+      currentBranch: impact.currentBranch,
+      baseBranch: impact.baseBranch ?? project.baseBranch,
+      changedFiles: impact.changedFiles,
+      affectedFeatures: impact.affectedFeatures.map((f) => ({
+        featureId: f.featureId,
+        featureName: f.featureName,
+        confidence: f.confidence,
+        reasons: f.reasons,
       })),
-      affectedFeatures: [],
-      potentiallyStaleDocuments: [],
+      potentiallyStaleDocuments: impact.potentiallyStaleDocuments,
     };
     return body;
   });

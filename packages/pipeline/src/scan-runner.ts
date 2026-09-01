@@ -18,6 +18,7 @@ import {
   evidenceId,
   collectGitInfo,
   WORKING_TREE_SHA,
+  BRANCH_DIFF_SHA,
   type PlatformOutput,
   type EvidenceInput,
 } from '@featuremap/analyzer';
@@ -165,7 +166,11 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   const fileAssetId = (path: string): string =>
     assetId({ type: isTestPath(path) ? 'test' : 'file', path });
 
-  const allChanges = [...gitInfo.commitChanges, ...gitInfo.workingChanges];
+  const allChanges = [
+    ...gitInfo.commitChanges,
+    ...gitInfo.workingChanges,
+    ...gitInfo.branchChanges,
+  ];
   const gitEvidence: Array<EvidenceInput & { analyzerId: string }> = allChanges.map((change) => ({
     sourceType: 'file' as const,
     sourceId: change.path,
@@ -343,6 +348,16 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
     if (gitInfo.workingChanges.length > 0) {
       db.insert(schema.commits)
         .values({ sha: WORKING_TREE_SHA, projectId, message: 'Working tree changes' })
+        .onConflictDoNothing()
+        .run();
+    }
+    if (gitInfo.branchChanges.length > 0) {
+      db.insert(schema.commits)
+        .values({
+          sha: BRANCH_DIFF_SHA,
+          projectId,
+          message: `Branch changes vs ${config.scan.baseBranch}`,
+        })
         .onConflictDoNothing()
         .run();
     }

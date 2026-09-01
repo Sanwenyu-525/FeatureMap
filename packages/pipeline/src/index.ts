@@ -3,3 +3,4 @@
  */
 export * from './scan-runner.js';
 export * from './feature-discovery.js';
+export * from './impact.js';

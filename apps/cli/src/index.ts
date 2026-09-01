@@ -116,9 +116,41 @@ program
 program
   .command('impact')
   .description('Analyze current changes relative to the configured base branch.')
-  .action(() => {
-    console.error('impact: not implemented yet (Milestone 4 — Change Impact).');
-    process.exitCode = 1;
+  .action(async () => {
+    try {
+      const { analyzeImpact } = await import('@featuremap/pipeline');
+      const result = analyzeImpact(process.cwd());
+      console.log(`Branch: ${result.currentBranch ?? 'unknown'} (base: ${result.baseBranch ?? 'unknown'})`);
+      console.log('');
+      console.log(`Changed files (${result.changedFiles.length}):`);
+      for (const f of result.changedFiles) {
+        console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
+      }
+      if (result.changedFiles.length === 0) {
+        console.log('  (no uncommitted or branch changes detected)');
+      }
+      console.log('');
+      console.log(`Affected features (${result.affectedFeatures.length}):`);
+      for (const f of result.affectedFeatures) {
+        console.log(`  ${f.featureName} (${f.featureId}) — confidence ${f.confidence}`);
+        for (const reason of f.reasons) console.log(`    · ${reason}`);
+        if (f.tests.length > 0) console.log(`    tests: ${f.tests.join(', ')}`);
+        if (f.documents.length > 0) console.log(`    docs: ${f.documents.join(', ')}`);
+      }
+      if (result.affectedFeatures.length === 0) {
+        console.log('  (none with surfaceable confidence)');
+      }
+      if (result.potentiallyStaleDocuments.length > 0) {
+        console.log('');
+        console.log('Potentially stale documentation:');
+        for (const d of result.potentiallyStaleDocuments) {
+          console.log(`  ${d.path} — ${d.reason}`);
+        }
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
   });
 
 program

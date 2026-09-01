@@ -82,7 +82,12 @@ export interface ChangesResponse {
   currentBranch?: string;
   baseBranch: string;
   changedFiles: Array<{ path: string; changeType: string; commitSha: string }>;
-  affectedFeatures: Array<{ featureId: string; confidence: number; reasons: string[] }>;
+  affectedFeatures: Array<{
+    featureId: string;
+    featureName: string;
+    confidence: number;
+    reasons: string[];
+  }>;
   potentiallyStaleDocuments: Array<{ path: string; reason: string }>;
 }
 

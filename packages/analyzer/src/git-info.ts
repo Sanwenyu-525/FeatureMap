@@ -32,10 +32,13 @@ export interface GitInfo {
   commitChanges: CommitFileChange[];
   /** Working-tree changes (git status --porcelain); pseudo-sha WORKING_TREE. */
   workingChanges: CommitFileChange[];
+  /** Committed changes on the branch vs base (base...HEAD); pseudo-sha BRANCH_DIFF. */
+  branchChanges: CommitFileChange[];
   error?: string;
 }
 
 const WORKING_TREE = 'WORKING_TREE';
+const BRANCH_DIFF = 'BRANCH_DIFF';
 
 function mapStatus(code: string): CommitFileChange['changeType'] | undefined {
   switch (code) {
@@ -66,6 +69,7 @@ export async function collectGitInfo(repoRoot: string, baseBranch: string): Prom
     commits: [],
     commitChanges: [],
     workingChanges: [],
+    branchChanges: [],
   };
   if (!existsSync(join(repoRoot, '.git'))) {
     info.error = 'no .git directory';
@@ -149,7 +153,25 @@ export async function collectGitInfo(repoRoot: string, baseBranch: string): Prom
     // Degrade without working-tree changes.
   }
 
+  if (info.baseBranchExists) {
+    try {
+      const diff = await git('diff', '--name-status', `${baseBranch}...HEAD`);
+      for (const line of diff.split('\n')) {
+        if (line.trim() === '') continue;
+        const parts = line.split('\t');
+        const changeType = mapStatus(parts[0]?.charAt(0) ?? '');
+        if (!changeType) continue;
+        const path = changeType === 'renamed' ? (parts[2] ?? parts[1]) : parts[1];
+        if (!path) continue;
+        info.branchChanges.push({ commitSha: BRANCH_DIFF, path: toPosix(path), changeType });
+      }
+    } catch {
+      info.branchChanges = [];
+    }
+  }
+
   return info;
 }
 
 export const WORKING_TREE_SHA = WORKING_TREE;
+export const BRANCH_DIFF_SHA = BRANCH_DIFF;
