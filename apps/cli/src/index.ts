@@ -125,9 +125,41 @@ program
   .command('feature')
   .description('Print feature context in terminal-friendly form.')
   .argument('<name-or-id>')
-  .action(() => {
-    console.error('feature: not implemented yet (Milestone 2 — Feature Discovery).');
-    process.exitCode = 1;
+  .action(async (nameOrId: string) => {
+    try {
+      const { getFeatureContext } = await import('@featuremap/pipeline');
+      const context = getFeatureContext(process.cwd(), nameOrId);
+      if (!context) {
+        console.error(`Feature "${nameOrId}" not found. Run "featuremap scan" first.`);
+        process.exitCode = 1;
+        return;
+      }
+      const { feature, assets, documents, evidence } = context;
+      console.log(`${feature.name}  [${feature.pattern}]  confidence=${feature.confidence}`);
+      console.log('');
+      console.log('Health (explainable, derived from evidence):');
+      for (const [dim, state] of Object.entries(feature.health)) {
+        console.log(`  ${dim.padEnd(20)} ${state}`);
+      }
+      console.log('');
+      console.log('Assets:');
+      for (const asset of assets) {
+        console.log(`  [${asset.type}] ${asset.label} (${asset.confidence})`);
+      }
+      if (documents.length > 0) {
+        console.log('');
+        console.log('Documents:');
+        for (const doc of documents) console.log(`  ${doc}`);
+      }
+      console.log('');
+      console.log('Why? (evidence chain):');
+      for (const ev of evidence.slice(0, 20)) {
+        console.log(`  ${ev.sourceId} → ${feature.name} (${ev.confidence}, ${ev.analyzerId})`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
   });
 
 program

@@ -1,0 +1,1 @@
+ALTER TABLE `features` ADD `health` text;

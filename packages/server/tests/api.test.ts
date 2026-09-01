@@ -55,14 +55,43 @@ describe('GET /api/overview', () => {
 });
 
 describe('GET /api/features', () => {
-  it('returns an empty list before feature discovery (Milestone 2)', async () => {
+  it('returns discovered features with pattern and derived health', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/features' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual([]);
+    const body = res.json() as Array<{
+      id: string;
+      pattern: string;
+      confidence: number;
+      health?: Record<string, string>;
+    }>;
+    const login = body.find((f) => f.id === 'feature:login');
+    expect(login).toBeDefined();
+    expect(login?.pattern).toBe('Authentication');
+    expect(login?.health?.['implementation']).toBe('complete');
   });
 });
 
 describe('GET /api/features/:id', () => {
+  it('returns the full feature detail with assets, documents and evidence', async () => {
+    const list = await app.inject({ method: 'GET', url: '/api/features' });
+    const first = (list.json() as Array<{ id: string }>)[0];
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/features/${encodeURIComponent(first.id)}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      id: string;
+      assets: unknown[];
+      evidence: unknown[];
+      health?: Record<string, string>;
+    };
+    expect(body.id).toBe(first.id);
+    expect(body.assets.length).toBeGreaterThan(0);
+    expect(body.evidence.length).toBeGreaterThan(0);
+    expect(body.health?.['implementation']).toBeDefined();
+  });
+
   it('returns the documented FEATURE_NOT_FOUND error envelope', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/features/nope' });
     expect(res.statusCode).toBe(404);

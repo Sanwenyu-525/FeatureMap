@@ -33,6 +33,15 @@ export interface OverviewResponse {
   currentImpact: { changedFiles: number; affectedFeatures: number };
 }
 
+export interface FeatureHealth {
+  implementation: string;
+  api: string;
+  tests: string;
+  documentation: string;
+  instructions: string;
+  documentationDrift: string;
+}
+
 export interface FeatureListItem {
   id: string;
   name: string;
@@ -40,6 +49,7 @@ export interface FeatureListItem {
   pattern: string;
   confidence: number;
   status: string;
+  health?: FeatureHealth;
   updatedAt: string;
 }
 

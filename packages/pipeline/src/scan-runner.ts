@@ -1,10 +1,10 @@
 /**
- * Scan orchestrator — docs/ARCHITECTURE.md §4 scan lifecycle, Milestone 1
- * scope (docs/DEVELOPMENT_PLAN.md).
+ * Scan orchestrator — docs/ARCHITECTURE.md §4 scan lifecycle.
  *
- * Source → Scanner → Analyzer → Evidence → Store: the orchestrator
- * persists normalized evidence and returns a stable JSON structure.
- * Shared by the CLI (`scan`) and the local API (`POST /scan`).
+ * Source → Scanner → Analyzer → Evidence → Feature Engine → Store:
+ * the orchestrator persists normalized evidence and discovered
+ * features, then returns a stable JSON structure. Shared by the CLI
+ * (`scan`) and the local API (`POST /scan`).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +22,7 @@ import {
   type EvidenceInput,
 } from '@featuremap/analyzer';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
+import { discoverFeatures, isTestPath, type DiscoveredFeature } from './feature-discovery.js';
 
 export interface ScanJsonOutput {
   project: {
@@ -37,6 +38,8 @@ export interface ScanJsonOutput {
     endpoints: number;
     dataEntities: number;
     documents: number;
+    instructions: number;
+    features: number;
     evidence: number;
     commits: number;
   };
@@ -44,6 +47,13 @@ export interface ScanJsonOutput {
   symbols: Array<{ path: string; name: string; kind: string; exported: boolean }>;
   endpoints: Array<{ path?: string; name: string }>;
   documents: Array<{ path: string; type: string; title?: string }>;
+  features: Array<{
+    id: string;
+    name: string;
+    pattern: string;
+    confidence: number;
+    health: Record<string, string>;
+  }>;
   commits: Array<{ sha: string; author: string; committedAt: string; message: string }>;
   evidence: Array<EvidenceInput & { id: string; analyzerId: string; origin: string }>;
   runs: Array<{
@@ -96,8 +106,8 @@ function collectSymbols(output: PlatformOutput): Array<{
 }
 
 /**
- * Execute a full scan: scan, analyze, collect git facts, persist and
- * return the JSON structure for `featuremap scan --json`.
+ * Execute a full scan: scan, analyze, discover features, collect git
+ * facts, persist everything and return the JSON structure.
  */
 export async function runScan(repoRoot: string, options: ScanOptions = {}): Promise<ScanJsonOutput> {
   void options.full; // accepted; Milestone 1 always performs a full rebuild.
@@ -138,7 +148,23 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
   // Git facts (degrades gracefully without git)
   const gitInfo = await collectGitInfo(scan.repoRoot, config.scan.baseBranch);
 
-  // Evidence: analyzer output + deterministic git modification facts
+  // ---- Derived artifacts -------------------------------------------------
+  const symbols = collectSymbols(output);
+
+  const mdTitles = new Map<string, string>();
+  for (const asset of output.assets) {
+    if (asset.type === 'file' && asset.language === 'Markdown') {
+      const meta = (asset.metadata ?? {}) as { title?: string };
+      if (meta.title) mdTitles.set(asset.path ?? '', meta.title);
+    }
+  }
+
+  // Feature discovery (Milestone 2): deterministic clustering.
+  const discovered = discoverFeatures(output.assets, output.evidence);
+
+  const fileAssetId = (path: string): string =>
+    assetId({ type: isTestPath(path) ? 'test' : 'file', path });
+
   const allChanges = [...gitInfo.commitChanges, ...gitInfo.workingChanges];
   const gitEvidence: Array<EvidenceInput & { analyzerId: string }> = allChanges.map((change) => ({
     sourceType: 'file' as const,
@@ -150,6 +176,39 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
     analyzerId: 'git',
     metadata: { changeType: change.changeType },
   }));
+
+  // Every feature mapping emits BELONGS_TO_FEATURE evidence so the UI
+  // can always answer "Why?" (AGENTS.md §1, docs/DATA_MODEL.md §3).
+  const featureEvidence: Array<EvidenceInput & { analyzerId: string }> = [];
+  for (const feature of discovered) {
+    for (const anchor of feature.anchors) {
+      const sourceId =
+        anchor.type === 'endpoint' ? `endpoint:${anchor.name}` : anchor.path ?? anchor.id;
+      featureEvidence.push({
+        sourceType: anchor.type,
+        sourceId,
+        relationType: 'BELONGS_TO_FEATURE',
+        targetType: 'feature',
+        targetId: feature.id,
+        confidence: 1.0,
+        analyzerId: 'feature-engine',
+        metadata: { role: 'anchor' },
+      });
+    }
+    for (const file of feature.closureFiles) {
+      featureEvidence.push({
+        sourceType: isTestPath(file) ? 'test' : 'file',
+        sourceId: file,
+        relationType: 'BELONGS_TO_FEATURE',
+        targetType: 'feature',
+        targetId: feature.id,
+        confidence: 0.9,
+        analyzerId: 'feature-engine',
+        metadata: { role: 'closure' },
+      });
+    }
+  }
+
   const allEvidence: Array<
     EvidenceInput & { id: string; analyzerId: string; origin: 'deterministic' }
   > = [
@@ -170,18 +229,14 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       id: evidenceId(e),
       origin: 'deterministic' as const,
     })),
+    ...featureEvidence.map((e) => ({
+      ...e,
+      id: evidenceId(e),
+      origin: 'deterministic' as const,
+    })),
   ];
 
-  const symbols = collectSymbols(output);
-  const mdTitles = new Map<string, string>();
-  for (const asset of output.assets) {
-    if (asset.type === 'file' && asset.language === 'Markdown') {
-      const meta = (asset.metadata ?? {}) as { title?: string };
-      if (meta.title) mdTitles.set(asset.path ?? '', meta.title);
-    }
-  }
-
-  // Persist evidence (step 9)
+  // ---- Persist (step 9) ----------------------------------------------------
   const dbPath = options.dbPath ?? defaultDatabasePath(scan.repoRoot);
   const { db, sqlite } = openDatabase(dbPath);
   try {
@@ -210,7 +265,9 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       })
       .run();
 
-    // Milestone 1 rebuilds content tables each scan (single-repo local tool).
+    // Content tables are rebuilt each scan (single-repo local tool).
+    // features last: its join tables cascade.
+    db.delete(schema.features).run();
     db.delete(schema.evidence).run();
     db.delete(schema.commitFiles).run();
     db.delete(schema.commits).run();
@@ -264,6 +321,10 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       db.insert(schema.documents)
         .values({ id: doc.path, path: doc.path, type: doc.type, title: mdTitles.get(doc.path) })
         .run();
+    }
+
+    for (const feature of discovered) {
+      insertFeature(db, feature, fileAssetId);
     }
 
     for (const commit of gitInfo.commits) {
@@ -332,7 +393,7 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
     sqlite.close();
   }
 
-  // Stable JSON structure (Milestone 1 exit criteria)
+  // ---- Stable JSON structure ------------------------------------------------
   const endpoints = output.assets
     .filter((a) => a.type === 'endpoint')
     .map((a) => ({ path: a.path, name: a.name ?? '' }));
@@ -352,6 +413,8 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       endpoints: endpoints.length,
       dataEntities: dataEntityCount,
       documents: scan.documents.length,
+      instructions: 0,
+      features: discovered.length,
       evidence: allEvidence.length,
       commits: gitInfo.commits.length,
     },
@@ -373,6 +436,13 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       type: d.type,
       title: mdTitles.get(d.path),
     })),
+    features: discovered.map((f) => ({
+      id: f.id,
+      name: f.name,
+      pattern: f.pattern,
+      confidence: f.confidence,
+      health: { ...f.health },
+    })),
     commits: gitInfo.commits.slice(0, 10).map((c) => ({
       sha: c.sha,
       author: c.author,
@@ -388,4 +458,39 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
       evidenceCount: r.evidenceCount,
     })),
   };
+}
+
+type Db = ReturnType<typeof openDatabase>['db'];
+
+function insertFeature(db: Db, feature: DiscoveredFeature, fileAssetId: (path: string) => string): void {
+  db.insert(schema.features)
+    .values({
+      id: feature.id,
+      name: feature.name,
+      pattern: feature.pattern,
+      confidence: feature.confidence,
+      status: 'active',
+      health: { ...feature.health },
+    })
+    .run();
+
+  for (const anchor of feature.anchors) {
+    db.insert(schema.featureAssets)
+      .values({ featureId: feature.id, assetId: anchor.id, confidence: 1.0 })
+      .onConflictDoNothing()
+      .run();
+  }
+  for (const file of feature.closureFiles) {
+    db.insert(schema.featureAssets)
+      .values({ featureId: feature.id, assetId: fileAssetId(file), confidence: 0.9 })
+      .onConflictDoNothing()
+      .run();
+  }
+
+  for (const doc of feature.documents) {
+    db.insert(schema.featureDocuments)
+      .values({ featureId: feature.id, documentId: doc, confidence: 0.9 })
+      .onConflictDoNothing()
+      .run();
+  }
 }

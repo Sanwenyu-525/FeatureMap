@@ -62,19 +62,26 @@ export function evidenceId(input: EvidenceInput & { analyzerId: string }): strin
 }
 
 /**
- * Register one file asset per scanned file. The platform owns file
- * assets so individual analyzers never duplicate them.
+ * Register one asset per scanned file. The platform owns file assets
+ * so individual analyzers never duplicate them; test files are typed
+ * as `test` (docs/DATA_MODEL.md §2 CodeAssetType).
  */
 function toFileAssets(files: ScannedFile[]): PlatformAsset[] {
   return files.map((f) => {
     const input: CodeAssetInput = {
-      type: 'file',
+      type: isTestPath(f.path) ? 'test' : 'file',
       path: f.path,
       language: f.language,
       metadata: { size: f.size, hash: f.hash },
     };
     return { ...input, id: assetId(input), analyzerId: 'platform' };
   });
+}
+
+const TEST_PATH_PATTERN = /\.(test|spec)\.[jt]sx?$|__tests__|\/tests?\//i;
+
+function isTestPath(path: string): boolean {
+  return TEST_PATH_PATTERN.test(path);
 }
 
 /**

@@ -151,6 +151,8 @@ export const features = sqliteTable('features', {
   status: text('status', { enum: ['active', 'merged', 'archived'] })
     .notNull()
     .default('active'),
+  // Derived (never a free-form AI judgment): docs/DATA_MODEL.md §5.
+  health: text('health', { mode: 'json' }).$type<Record<string, string>>(),
   createdAt: text('created_at').notNull().default(sql`(current_timestamp)`),
   updatedAt: text('updated_at').notNull().default(sql`(current_timestamp)`),
 });

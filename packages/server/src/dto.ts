@@ -56,13 +56,13 @@ export interface FeatureListItemDto {
   pattern: string;
   confidence: number;
   status: string;
+  health?: FeatureHealth;
   updatedAt: string;
 }
 
 /** GET /features/:id — full Feature Detail context (docs/MVP_SPEC.md §7.3). */
 export interface FeatureDetailDto extends FeatureListItemDto {
   parentId?: string;
-  health?: FeatureHealth;
   assets: Array<{ id: string; type: string; path?: string; name?: string }>;
   documents: Array<{ path: string; title?: string }>;
   evidence: Array<{

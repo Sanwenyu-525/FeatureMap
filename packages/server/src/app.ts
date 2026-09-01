@@ -4,9 +4,8 @@
  * Local-only by default; binds to loopback unless explicitly
  * configured. Returns DTOs with evidence and confidence preserved.
  */
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
-import { DEFAULT_FEATURE_HEALTH } from '@featuremap/core';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
 import { runScan } from '@featuremap/pipeline';
 import type {
@@ -42,6 +41,23 @@ function deriveTechnologies(db: FeatureMapDb) {
     .all()[0];
   const stats = (latestScan?.stats ?? {}) as { technologies?: Array<{ id: string; confidence: number; source: string }> };
   return stats.technologies ?? [];
+}
+
+/** Aggregate derived feature health into per-state counts. */
+function aggregateHealth(
+  db: FeatureMapDb,
+  total: number,
+): OverviewResponse['health'] {
+  const byState: Record<string, number> = { complete: 0, partial: 0, present: 0, missing: 0, unknown: 0 };
+  const rows = db.select().from(schema.features).all();
+  for (const row of rows) {
+    const health = (row.health ?? {}) as Record<string, string>;
+    // A feature counts as healthy when its implementation dimension is
+    // complete; unknown when no health was derived.
+    const state = health['implementation'] ?? 'unknown';
+    byState[state] = (byState[state] ?? 0) + 1;
+  }
+  return { total, byState: byState as OverviewResponse['health']['byState'] };
 }
 
 export function buildServer(options: BuildServerOptions): FastifyInstance {
@@ -90,12 +106,9 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       .all();
     const body: OverviewResponse = {
       counts,
-      // Feature health derivation arrives in Milestone 2; until then every
-      // feature is reported as unknown rather than invented (AGENTS.md §7).
-      health: {
-        total: counts.features,
-        byState: { complete: 0, partial: 0, missing: 0, unknown: counts.features },
-      },
+      // Aggregated from derived feature health (docs/DATA_MODEL.md §5),
+      // never invented: dimensions missing evidence count as unknown.
+      health: aggregateHealth(db, counts.features),
       currentImpact: { changedFiles: workingChanges.length, affectedFeatures: 0 },
     };
     return body;
@@ -110,13 +123,15 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       pattern: f.pattern,
       confidence: f.confidence,
       status: f.status,
+      health: (f.health ?? undefined) as FeatureListItemDto['health'],
       updatedAt: f.updatedAt,
     }));
     return list;
   });
 
   app.get('/api/features/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
+    // find-my-way may leave %3A encoded; feature ids contain ':'.
+    const id = decodeURIComponent((req.params as { id: string }).id);
     const feature = db.select().from(schema.features).where(eq(schema.features.id, id)).all()[0];
     if (!feature) {
       return fail(reply, 'FEATURE_NOT_FOUND', `Feature "${id}" does not exist.`, 404);
@@ -148,7 +163,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     const evidence = db
       .select()
       .from(schema.evidence)
-      .where(eq(schema.evidence.sourceId, id))
+      .where(sql`${schema.evidence.targetType} = 'feature' and ${schema.evidence.targetId} = ${id}`)
       .all()
       .map((e) => ({
         id: e.id,
@@ -168,7 +183,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       confidence: feature.confidence,
       status: feature.status,
       updatedAt: feature.updatedAt,
-      health: DEFAULT_FEATURE_HEALTH,
+      health: (feature.health ?? undefined) as FeatureDetailDto['health'],
       assets,
       documents,
       evidence,
@@ -177,12 +192,16 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   });
 
   app.get('/api/features/:id/evidence', async (req, reply) => {
-    const { id } = req.params as { id: string };
+    const id = decodeURIComponent((req.params as { id: string }).id);
     const feature = db.select().from(schema.features).where(eq(schema.features.id, id)).all()[0];
     if (!feature) {
       return fail(reply, 'FEATURE_NOT_FOUND', `Feature "${id}" does not exist.`, 404);
     }
-    const evidence = db.select().from(schema.evidence).where(eq(schema.evidence.sourceId, id)).all();
+    const evidence = db
+      .select()
+      .from(schema.evidence)
+      .where(sql`${schema.evidence.targetType} = 'feature' and ${schema.evidence.targetId} = ${id}`)
+      .all();
     return { featureId: id, evidence };
   });
 
