@@ -1,6 +1,8 @@
 # Development Plan
 
-## Milestone 0 — Repository bootstrap
+## Milestone 0 — Repository bootstrap — ✅ Complete
+
+Status: completed (`d3e43a9`). pnpm workspace, TypeScript configs, lint/typecheck/test setup, package boundaries, SQLite/Drizzle bootstrap, CLI shell with `init`/`doctor`, fixture strategy under `test-fixtures/`.
 
 Goal: establish architecture and developer workflow.
 
@@ -24,7 +26,9 @@ pnpm test
 
 all run successfully.
 
-## Milestone 1 — Repository Intelligence
+## Milestone 1 — Repository Intelligence — ✅ Complete
+
+Status: completed (`b4a2409`). Scanner (ignore rules, hashing, document discovery, technology detection), analyzer platform with failure isolation, TypeScript/Express/NestJS/Prisma/Markdown/Git analyzers, evidence persistence, `featuremap scan --json`.
 
 Goal: generate deterministic repository evidence.
 
@@ -52,7 +56,9 @@ Exit criteria:
 
 A fixture repo produces stable JSON evidence for files, symbols, routes, documents, and Git changes.
 
-## Milestone 2 — Feature Discovery
+## Milestone 2 — Feature Discovery — ✅ Complete
+
+Status: completed (`c71f8e2`). Deterministic clustering (endpoint anchors → evidence closure), pattern classification, explainable health derivation, document mapping, `featuremap feature <name>`. LLM semantic naming remains an optional future enhancement; the deterministic baseline is the product path (AGENTS.md §3.2).
 
 Goal: convert evidence into useful feature groups.
 
@@ -76,7 +82,9 @@ Exit criteria:
 
 Representative fixture repos produce understandable features with explainable mappings.
 
-## Milestone 3 — Local Web UI
+## Milestone 3 — Local Web UI — ✅ Complete
+
+Status: completed (`5c1273f`, `323c2c6`). Fastify API serving consumer DTOs, React/Vite app with Overview/Features/Feature Detail/Changes pages, @xyflow product-flow visualization with confidence-differentiated edges and a "Why?" evidence panel, static hosting + SPA fallback in `featuremap dev`, Playwright E2E covering the five acceptance flows.
 
 Goal: make FeatureMap usable as a Swagger-like local application.
 
@@ -106,7 +114,9 @@ Exit criteria:
 
 A developer can answer the five MVP acceptance questions through the browser.
 
-## Milestone 4 — Change Impact
+## Milestone 4 — Change Impact — ✅ Complete
+
+Status: completed (`7d79140`). Working-tree + branch-diff change set, evidence-backed reverse traversal (direct membership 1.0, transitive IMPORTS 0.8), confidence ranking, relevant tests/docs, documentation-drift warnings, `featuremap impact` and `GET /api/changes`.
 
 Goal: make FeatureMap useful in everyday coding flow.
 
@@ -129,7 +139,9 @@ Exit criteria:
 
 Impact output is useful on representative feature branches without overwhelming false positives.
 
-## Milestone 5 — MCP
+## Milestone 5 — MCP — ✅ Complete
+
+Status: completed (`9119a69`). stdio MCP server exposing all five tools with bounded, ranked context output; `featuremap mcp` command.
 
 Goal: serve FeatureMap context to coding agents.
 

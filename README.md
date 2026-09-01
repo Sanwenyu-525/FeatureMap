@@ -147,6 +147,7 @@ featuremap scan --json
 featuremap dev
 featuremap impact
 featuremap feature login
+featuremap mcp
 featuremap doctor
 ```
 
@@ -202,6 +203,24 @@ CLI / Web / MCP
 
 This boundary is the most important architectural rule in the project.
 
+## MVP Status
+
+All MVP milestones are implemented on the `develop` branch
+(see [Development plan](docs/DEVELOPMENT_PLAN.md) for per-milestone details):
+
+| Milestone | Scope |
+|---|---|
+| M0 Repository bootstrap | pnpm workspace, core domain model, SQLite/Drizzle, CLI shell |
+| M1 Repository Intelligence | scanner, analyzer platform, deterministic analyzers, evidence store |
+| M2 Feature Discovery | deterministic clustering, pattern classification, explainable health |
+| M3 Local Web UI | Fastify API + React UI, product-flow visualization, Playwright E2E |
+| M4 Change Impact | evidence-backed impact traversal, documentation-drift warnings |
+| M5 MCP | five bounded context tools over stdio |
+
+Feature discovery in the MVP is fully deterministic (see
+[ADR-0002](docs/ADR/0002-deterministic-feature-discovery.md)); LLM
+semantic naming is a future optional enhancement, not a dependency.
+
 ## Documentation
 
 - [MVP specification](docs/MVP_SPEC.md)
@@ -215,6 +234,7 @@ This boundary is the most important architectural rule in the project.
 - [MCP specification](docs/MCP_SPEC.md)
 - [Security and privacy](SECURITY.md)
 - [ADR-0001: Local-first TypeScript architecture](docs/ADR/0001-local-first-typescript.md)
+- [ADR-0002: Deterministic feature discovery](docs/ADR/0002-deterministic-feature-discovery.md)
 
 ## Success Criteria
 
