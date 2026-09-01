@@ -142,6 +142,28 @@ export interface ScanRequest {
   mode: 'incremental' | 'full';
 }
 
+/** GET /features/:id/changes (Milestone 14 / ADR-0004 §6) */
+export interface FeatureChangesResponse {
+  featureId: string;
+  featureName?: string;
+  commits: Array<{
+    sha: string;
+    author: string;
+    email?: string;
+    committedAt?: string;
+    message?: string;
+    kind: string;
+    changedPaths: string[];
+  }>;
+  contributors: Array<{ name: string; count: number }>;
+  stats: {
+    commitCount: number;
+    fileCount: number;
+    contributorCount: number;
+    changeKinds: Record<string, number>;
+  };
+}
+
 /** GET /analyzers */
 export interface AnalyzerStatusDto {
   analyzerId: string;

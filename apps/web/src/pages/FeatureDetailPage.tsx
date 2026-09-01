@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api, type Candidate, type FeatureDetail } from '../api/client';
+import { api, type Candidate, type FeatureDetail, type FeatureTimeline } from '../api/client';
 import { ErrorNotice, PageTitle, HEALTH_LABELS } from './shared';
 import FeatureFlowView from './FeatureFlowView';
 
@@ -87,16 +87,32 @@ function CandidateRow({
 export default function FeatureDetailPage() {
   const { id = '' } = useParams();
   const [feature, setFeature] = useState<FeatureDetail | null>(null);
+  const [timeline, setTimeline] = useState<FeatureTimeline | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [view, setView] = useState<'flow' | 'lists'>('flow');
+  const [view, setView] = useState<'flow' | 'lists' | 'changes'>('flow');
 
   useEffect(() => {
     setFeature(null);
+    setTimeline(null);
     api
       .feature(id)
       .then(setFeature)
       .catch(setError);
   }, [id]);
+
+  useEffect(() => {
+    if (view !== 'changes') return;
+    let cancelled = false;
+    api
+      .featureChanges(id)
+      .then((t) => {
+        if (!cancelled) setTimeline(t);
+      })
+      .catch(setError);
+    return () => {
+      cancelled = true;
+    };
+  }, [view, id]);
 
   if (error) {
     return (
@@ -145,7 +161,7 @@ export default function FeatureDetailPage() {
         </div>
       ) : null}
       <div className="mb-4 flex gap-2">
-        {(['flow', 'lists'] as const).map((v) => (
+        {(['flow', 'lists', 'changes'] as const).map((v) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -153,11 +169,11 @@ export default function FeatureDetailPage() {
               view === v ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
             }`}
           >
-            {v === 'flow' ? '产品流视图' : '工程视图'}
+            {v === 'flow' ? '产品流视图' : v === 'lists' ? '工程视图' : '变更时间线'}
           </button>
         ))}
       </div>
-      {view === 'flow' ? (
+      {view === 'changes' ? <TimelineView timeline={timeline} /> : view === 'flow' ? (
         <FeatureFlowView feature={feature} />
       ) : (
         <>
@@ -205,6 +221,65 @@ export default function FeatureDetailPage() {
           </section>
         </>
       )}
+    </>
+  );
+}
+
+/** 变更时间线视图（Milestone 14 / ADR-0004 §6）：统计 + 提交列表 + 贡献者。 */
+function TimelineView({ timeline }: { timeline: FeatureTimeline | null }) {
+  if (!timeline) return <p className="text-sm text-slate-500">加载中…</p>;
+  const kinds = Object.entries(timeline.stats.changeKinds);
+  return (
+    <>
+      <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-medium text-slate-700">统计</h2>
+        <div className="grid grid-cols-3 gap-2 text-xs text-slate-600">
+          <div>提交 <span className="font-semibold text-slate-800">{timeline.stats.commitCount}</span></div>
+          <div>文件 <span className="font-semibold text-slate-800">{timeline.stats.fileCount}</span></div>
+          <div>贡献者 <span className="font-semibold text-slate-800">{timeline.stats.contributorCount}</span></div>
+        </div>
+        {kinds.length > 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            变更类型：{kinds.map(([k, n]) => `${k} ×${n}`).join('、')}
+          </p>
+        ) : null}
+      </section>
+      <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-medium text-slate-700">提交时间线（最近在前）</h2>
+        {timeline.commits.length === 0 ? (
+          <p className="text-sm text-slate-500">该功能的资产暂无提交记录（重新扫描后更新）。</p>
+        ) : (
+          <ul className="space-y-3">
+            {timeline.commits.map((c) => (
+              <li key={c.sha} className="border-b border-slate-100 pb-2 last:border-0">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] text-indigo-600">
+                    {c.kind}
+                  </span>
+                  <span className="font-mono text-slate-500">{c.sha.slice(0, 7)}</span>
+                  <span className="text-slate-400">{c.committedAt}</span>
+                </div>
+                <p className="mt-1 text-sm text-slate-700">{c.message}</p>
+                <p className="mt-0.5 font-mono text-[10px] text-slate-400">
+                  {c.author} · {c.changedPaths.join(', ')}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {timeline.contributors.length > 0 ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-medium text-slate-700">贡献者</h2>
+          <ul className="space-y-1 text-xs">
+            {timeline.contributors.map((x) => (
+              <li key={x.name}>
+                {x.name} <span className="text-slate-400">×{x.count}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </>
   );
 }

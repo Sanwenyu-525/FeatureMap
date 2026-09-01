@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { runScan, analyzeImpact, setVerdict, ReviewError } from '@featuremap/pipeline';
+import { runScan, analyzeImpact, setVerdict, ReviewError, featureTimeline } from '@featuremap/pipeline';
 import type {
   AnalyzerStatusDto,
   CandidateDto,
@@ -255,6 +255,16 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       .where(sql`${schema.evidence.targetType} = 'feature' and ${schema.evidence.targetId} = ${id}`)
       .all();
     return { featureId: id, evidence };
+  });
+
+  /** Feature change timeline (Milestone 14 / ADR-0004 §6), derived at query time. */
+  app.get('/api/features/:id/changes', async (req, reply) => {
+    const id = decodeURIComponent((req.params as { id: string }).id);
+    try {
+      return featureTimeline(options.repoRoot, id, dbPath);
+    } catch {
+      return fail(reply, 'FEATURE_NOT_FOUND', `Feature "${id}" does not exist.`, 404);
+    }
   });
 
   app.get('/api/changes', async (req, reply) => {
