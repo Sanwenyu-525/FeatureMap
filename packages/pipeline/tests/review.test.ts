@@ -8,7 +8,7 @@
  * - a changed evidence fingerprint supersedes the verdict (drift)
  * - explain renders the full evidence chain behind a score
  */
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,21 @@ function fixtureDb(): string {
     tempDirs.push(sharedDir);
   }
   return join(sharedDir, 'featuremap.db');
+}
+
+/**
+ * Writable copy of fixture 01. The drift test mutates source files; a
+ * copy (without the .featuremap cache) keeps it parallel-safe instead
+ * of modifying the shared fixture tree.
+ */
+function copyFixture01(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'featuremap-review-'));
+  tempDirs.push(dir);
+  cpSync(join(FIXTURES_ROOT, '01-simple-login'), dir, {
+    recursive: true,
+    filter: (src) => !src.includes('.featuremap'),
+  });
+  return dir;
 }
 
 afterAll(() => {
@@ -129,9 +144,9 @@ describe('review workflow on fixture 01', () => {
   });
 
   it('a changed evidence fingerprint supersedes the verdict (drift)', async () => {
-    // Fresh store.
+    // Fresh store + writable fixture copy (parallel-safe).
     const dbPath = tempDb();
-    const root = join(FIXTURES_ROOT, '01-simple-login');
+    const root = copyFixture01();
     await runScan(root, { dbPath });
     setVerdict(root, 'login', 'src/shared/logger.ts', 'rejected', dbPath);
 
