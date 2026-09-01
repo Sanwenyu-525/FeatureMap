@@ -23,9 +23,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          # Must match the action runtime (runs.using node24) so the
-          # native better-sqlite3 binding is compiled for the same ABI.
-          node-version: 24
+          # Node 22: better-sqlite3 11.x crashes on Node 24 at teardown
+          # (RemoveEnvironmentCleanupHook assertion). Composite steps use
+          # the node on PATH, so 22 keeps install + CLI consistent.
+          node-version: 22
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
