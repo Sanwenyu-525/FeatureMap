@@ -76,8 +76,9 @@ export interface Instruction {
 
 /**
  * Entity types allowed as Evidence source/target.
- * Covers code assets plus features, documents and instructions so a
- * single normalized Evidence record can connect any two entities.
+ * Covers code assets plus features, documents, instructions and Git
+ * commits (persisted in the `commits` table) so a single normalized
+ * Evidence record can connect any two entities.
  */
 export type EntityType =
   | 'feature'
@@ -88,7 +89,8 @@ export type EntityType =
   | 'data_entity'
   | 'test'
   | 'document'
-  | 'instruction';
+  | 'instruction'
+  | 'commit';
 
 /** Whether evidence was produced by deterministic analysis, semantic (LLM) inference, or manual correction. */
 export type EvidenceOrigin = 'deterministic' | 'semantic' | 'manual';

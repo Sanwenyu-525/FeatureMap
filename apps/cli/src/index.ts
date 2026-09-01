@@ -17,6 +17,7 @@ import {
   loadConfig,
   type ConfigIssue,
 } from '@featuremap/core';
+import { runScan } from './scan-runner.js';
 
 const program = new Command();
 
@@ -60,9 +61,33 @@ program
   .option('--json', 'emit machine-readable JSON output')
   .option('--full', 'force a full rescan')
   .option('--no-llm', 'disable semantic analysis for this run')
-  .action(() => {
-    console.error('scan: not implemented yet (Milestone 1 — Repository Intelligence).');
-    process.exitCode = 1;
+  .action(async (opts: { json?: boolean; full?: boolean }) => {
+    try {
+      const repoRoot = process.cwd();
+      const result = await runScan(repoRoot, { json: opts.json, full: opts.full });
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`Project: ${result.project.name}`);
+        console.log(`Branch: ${result.project.currentBranch ?? 'unknown'}`);
+        console.log('');
+        console.log('Technologies');
+        for (const t of result.technologies) console.log(`✓ ${t.id}`);
+        console.log('');
+        console.log(`Files: ${result.counts.files}`);
+        console.log(`Symbols: ${result.counts.symbols}`);
+        console.log(`Endpoints: ${result.counts.endpoints}`);
+        console.log(`Documents: ${result.counts.documents}`);
+        console.log(`Evidence: ${result.counts.evidence}`);
+        console.log(`Commits: ${result.counts.commits}`);
+        console.log('');
+        console.log('Analyzers');
+        for (const run of result.runs) console.log(`✓ ${run.analyzerId}: ${run.status}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
   });
 
 program

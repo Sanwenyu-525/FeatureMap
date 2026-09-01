@@ -1,0 +1,26 @@
+{
+  "name": "@featuremap/plugin-sdk",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Analyzer plugin contracts for FeatureMap (docs/ANALYZER_PLUGIN_SPEC.md).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "echo \"no sdk tests\" && exit 0"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*"
+  }
+}

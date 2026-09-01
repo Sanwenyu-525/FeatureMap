@@ -1,0 +1,28 @@
+{
+  "name": "@featuremap/scanner",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap repository scanner: discovery, hashing, ignore rules, technology detection.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*",
+    "@featuremap/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "vitest": "^2.1.8"
+  }
+}

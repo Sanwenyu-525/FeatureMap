@@ -1,0 +1,11 @@
+{
+  "name": "react-express-basic",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

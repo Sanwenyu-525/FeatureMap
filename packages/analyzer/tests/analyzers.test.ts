@@ -1,0 +1,147 @@
+/**
+ * Analyzer fixture tests (docs/TESTING_STRATEGY.md §3).
+ *
+ * Assertions focus on emitted Evidence rather than internal
+ * implementation, e.g.:
+ *
+ *   POST /api/login
+ *   HANDLED_BY
+ *   symbol:src/auth/login.js:loginHandler
+ *   confidence = 1.0
+ */
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
+import type { AnalyzeContext } from '@featuremap/plugin-sdk';
+import {
+  expressAnalyzer,
+  markdownAnalyzer,
+  nestjsAnalyzer,
+  prismaAnalyzer,
+  runAnalyzers,
+  typescriptAnalyzer,
+} from '../src/index.js';
+
+const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', 'react-express-basic');
+
+const FIXTURE_FILES = [
+  'README.md',
+  'package.json',
+  'prisma/schema.prisma',
+  'src/app.js',
+  'src/auth/login.js',
+  'src/auth/user.js',
+];
+
+let context: AnalyzeContext;
+
+beforeAll(() => {
+  const files = FIXTURE_FILES.map((path) => ({
+    path,
+    hash: 'fixture',
+    size: 0,
+    language: path.endsWith('.js') ? 'JavaScript' : undefined,
+  }));
+  context = {
+    repoRoot: fixtureRoot,
+    files,
+    readFile: (p) => {
+      try {
+        return readFileSync(join(fixtureRoot, p), 'utf8');
+      } catch {
+        return undefined;
+      }
+    },
+    config: {
+      analyzers: ['typescript', 'express', 'prisma', 'markdown'],
+      scan: { baseBranch: 'main', ignore: ['node_modules/**'] },
+    },
+  };
+});
+
+function evidenceOf(
+  result: { relationType: string; sourceId: string; targetId: string; confidence: number }[],
+) {
+  return result.map((e) => `${e.sourceId} ${e.relationType} ${e.targetId} (${e.confidence})`);
+}
+
+describe('typescript analyzer', () => {
+  it('extracts symbols from fixture files', async () => {
+    const result = await typescriptAnalyzer.analyze(context);
+    const names = result.assets.filter((a) => a.type === 'symbol').map((a) => a.name);
+    expect(names).toContain('loginHandler');
+    expect(names).toContain('findUserByEmail');
+    expect(names).toContain('listUsers');
+  });
+
+  it('emits deterministic IMPORTS evidence resolved to repo files', async () => {
+    const result = await typescriptAnalyzer.analyze(context);
+    const imports = result.evidence.filter((e) => e.relationType === 'IMPORTS');
+    expect(evidenceOf(imports)).toContain(
+      'src/app.js IMPORTS src/auth/login.js (1)',
+    );
+    expect(evidenceOf(imports)).toContain(
+      'src/auth/login.js IMPORTS src/auth/user.js (1)',
+    );
+  });
+});
+
+describe('express analyzer', () => {
+  it('emits POST /api/login with HANDLED_BY evidence at confidence 1.0', async () => {
+    const result = await expressAnalyzer.analyze(context);
+    const endpoints = result.assets.filter((a) => a.type === 'endpoint');
+    expect(endpoints.map((e) => e.name)).toContain('POST /api/login');
+    expect(endpoints.map((e) => e.name)).toContain('GET /api/users');
+
+    const handled = result.evidence.filter((e) => e.relationType === 'HANDLED_BY');
+    expect(evidenceOf(handled)).toContain(
+      'endpoint:POST /api/login HANDLED_BY symbol:src/auth/login.js:loginHandler (1)',
+    );
+    expect(evidenceOf(handled)).toContain(
+      'endpoint:GET /api/users HANDLED_BY symbol:src/app.js:listUsers (1)',
+    );
+  });
+});
+
+describe('prisma analyzer', () => {
+  it('emits data entities and deterministic REFERENCES relations', async () => {
+    const result = await prismaAnalyzer.analyze(context);
+    const entities = result.assets.filter((a) => a.type === 'data_entity').map((a) => a.name);
+    expect(entities).toContain('User');
+    expect(entities).toContain('Post');
+
+    const refs = result.evidence.filter((e) => e.relationType === 'REFERENCES');
+    expect(evidenceOf(refs)).toContain(
+      'data_entity:Post REFERENCES data_entity:User (1)',
+    );
+  });
+});
+
+describe('markdown analyzer', () => {
+  it('links documented files with DESCRIBED_BY evidence', async () => {
+    const result = await markdownAnalyzer.analyze(context);
+    const described = result.evidence.filter((e) => e.relationType === 'DESCRIBED_BY');
+    expect(evidenceOf(described)).toContain(
+      'src/auth/login.js DESCRIBED_BY README.md (1)',
+    );
+    const readme = result.assets.find((a) => a.path === 'README.md');
+    expect(((readme?.metadata ?? {}) as { title?: string }).title).toBe('Basic Fixture');
+  });
+});
+
+describe('platform', () => {
+  it('runs all analyzers and isolates failures without aborting the scan', async () => {
+    const plugins = [typescriptAnalyzer, expressAnalyzer, prismaAnalyzer, markdownAnalyzer, nestjsAnalyzer];
+    const output = await runAnalyzers(plugins, context, context.files);
+    // File assets are registered by the platform itself.
+    expect(output.assets.filter((a) => a.type === 'file' && a.analyzerId === 'platform')).toHaveLength(
+      FIXTURE_FILES.length,
+    );
+    // nestjs is not present in this fixture: reported as skipped, never fatal.
+    const nestRun = output.runs.find((r) => r.analyzerId === 'nestjs');
+    expect(nestRun?.status).toBe('skipped');
+    const statuses = output.runs.map((r) => r.status);
+    expect(statuses).not.toContain('failed');
+  });
+});

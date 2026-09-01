@@ -1,0 +1,33 @@
+{
+  "name": "@featuremap/analyzer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap analyzer platform and built-in deterministic analyzers.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*",
+    "@featuremap/plugin-sdk": "workspace:*",
+    "execa": "^9.5.2",
+    "remark-parse": "^11.0.0",
+    "typescript": "^5.7.3",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "@types/mdast": "^4.0.4",
+    "vitest": "^2.1.8"
+  }
+}
