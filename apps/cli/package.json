@@ -16,6 +16,7 @@
     "@featuremap/core": "workspace:*",
     "@featuremap/mcp": "workspace:*",
     "@featuremap/pipeline": "workspace:*",
+    "@featuremap/scm": "workspace:*",
     "@featuremap/server": "workspace:*",
     "commander": "^12.1.0",
     "execa": "^9.5.2",

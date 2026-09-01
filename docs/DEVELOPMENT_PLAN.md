@@ -385,6 +385,121 @@ A feature page shows a commit timeline with contributors and churn
 for the configured log window, each entry traceable to its commit and
 feature mapping evidence.
 
+## Milestone 15 — Feature-aware PR Report (v0.4.0)
+
+Status: in progress (feature/pr-intelligence branch).
+
+Goal: turn impact into a local, transport-free feature-aware PR
+report — the analysis a GitHub Check/comment will later consume.
+
+Implement:
+
+- `featuremap pr [<range>] [--json]` — same change-source abstraction
+  as impact (`main..HEAD`, `HEAD`, or working tree + branch diff)
+- risk band HIGH/MEDIUM/LOW with an explainable rule table (direct
+  core change, public API/route/CLI entry, shared dependency, database
+  schema, unchanged related tests, many features) — bands, never an
+  opaque percentage (ADR-0005 §2)
+- test coverage: each recommended test marked changed (✓) or
+  "potential missing coverage" (⚠), never "tests missing" (ADR-0005 §3)
+- mapping drift: `relation_broken` (accepted/declared file deleted or
+  renamed) and `new_candidate` (changed symbol in an owned file not yet
+  confirmed) — deterministic, detect → suggest, never auto-create
+  (ADR-0005 §4)
+- `analyzeImpact` returns an additive `changedSymbols` field
+
+CLI:
+
+```bash
+featuremap pr main..HEAD
+featuremap pr HEAD
+```
+
+Exit criteria:
+
+`featuremap pr main..HEAD` on a scripted-commit fixture reports
+affected features with severity, an explainable risk band, changed /
+unchanged related tests, and drift signals — with no cross-feature
+noise. The GitHub transport (Action → Check → App) starts only after
+the local report proves daily value.
+
+## Milestone 16 — GitHub Check transport (v0.4.1)
+
+Status: in progress (feature/pr-intelligence branch).
+
+Goal: post the local PR report to a Pull Request as a persistent
+GitHub Check — the first real transport (ADR-0006).
+
+Implement:
+
+- `packages/scm`: `SCMProvider` (check-run surface) + `GitHubProvider`
+  (native-fetch Checks API client, injectable baseUrl/fetchImpl) +
+  `InMemoryProvider` test double
+- `renderPrCheck(PrReport)` — pure report → check payload
+  (`success` / `neutral`; `failure` only when the analysis itself
+  fails); body from normalized report data only (AGENTS.md §13)
+- persistent check by name on the head commit — create-or-update,
+  no per-push comments (ADR-0006 §3)
+- `runGitHubCheck(repoRoot, opts)` — scan → report → render → sync
+- `featuremap gh check [--base] [--head] [--owner] [--repo]
+  [--dry-run] [--json] [--skip-scan]`
+- `apps/github-action` — action.yml + bundled thin shell over the
+  runner (callers check out with `fetch-depth: 0`)
+
+CLI:
+
+```bash
+featuremap gh check --dry-run          # 渲染但不发送
+featuremap gh check                    # 需要 GITHUB_TOKEN 等环境变量
+```
+
+Exit criteria:
+
+`featuremap gh check --dry-run` on a real repository prints the
+feature-aware check (impact, risk, tests, drift) with the correct
+conclusion; the runner unit tests create then update one persistent
+check through a mocked provider; an analysis failure produces a
+`failure` check instead of being swallowed. No merge gating in v0.4.x
+(ADR-0006 §4).
+
+## Milestone 17 — GitHub App (v0.4.2)
+
+Status: in progress (feature/pr-intelligence branch).
+
+Goal: make the same feature-aware analysis available as an org
+installation — webhook receiver, installation auth, persistent
+checks, and rare review comments (ADR-0007).
+
+Implement:
+
+- `packages/scm` App auth: `createAppJwt` (RS256, 10-min), 
+  `getInstallationToken`, `verifyWebhookSignature` (HMAC-SHA256, raw
+  body, constant-time)
+- `GitHubRestClient` becomes token-agnostic (tokenProvider) and gains
+  the comment surface; `GitHubAppProvider` authenticates as an
+  installation with token caching (ADR-0007 §2)
+- `handleWebhook` — parse `pull_request`, run the check, and post/update
+  ONE comment per PR only when the conclusion is `neutral` (HIGH risk
+  or broken mapping), found by marker (phase plan §10)
+- `apps/github-app` — Fastify webhook server (raw-body HMAC verify,
+  installation id from payload, single-repo shape)
+
+CLI / deploy:
+
+```bash
+# env: FEATUREMAP_GITHUB_APP_ID / _APP_PRIVATE_KEY_PATH / _WEBHOOK_SECRET
+#      FEATUREMAP_GITHUB_OWNER / _REPO / FEATUREMAP_REPO_ROOT
+node apps/github-app/dist/index.js     # POST /webhook, GET /health
+```
+
+Exit criteria:
+
+`handleWebhook` unit tests post a check for a clean change (no
+comment) and create then update one persistent review comment on a
+broken mapping; the webhook signature rejects tampered bodies; the
+server responds 401 to unsigned webhooks and 200 on `/health`.
+Multi-repo checkout management is deferred.
+
 ## Phase 3 acceptance scenario
 
 Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,
@@ -418,9 +533,10 @@ Not acceptable: Register / Profile / Checkout / Settings appearing
 because they import shared code. If this scenario passes stably,
 Phase 3 delivers its intended value step over v0.2.
 
-Phase 4 (GitHub/GitLab PR Intelligence) starts only after the local
-loop above proves daily value — automating output nobody reads
-locally is not a goal.
+Phase 4 is staged (ADR-0005): the local feature-aware PR report
+(Milestone 15, v0.4.0) is the analysis; GitHub/GitLab transport
+(Action → Check → App) starts only after that local report proves
+daily value — automating output nobody reads locally is not a goal.
 
 ## Mapping quality (cross-cutting, starts with Milestone 6)
 
