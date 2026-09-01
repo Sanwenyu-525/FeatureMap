@@ -103,22 +103,22 @@ export function buildMcpServer(ctx: ToolContext): Server {
       let result: unknown;
       switch (name) {
         case 'list_features':
-          result = listFeatures(ctx, input as { query?: string; changedOnly?: boolean });
+          result = await listFeatures(ctx, input as { query?: string; changedOnly?: boolean });
           break;
         case 'get_feature':
-          result = getFeature(ctx, input as { featureId: string });
+          result = await getFeature(ctx, input as { featureId: string });
           break;
         case 'get_feature_context':
-          result = getFeatureContext(
+          result = await getFeatureContext(
             ctx,
             input as { featureId: string; include?: never[]; maxItemsPerSection?: number },
           );
           break;
         case 'get_affected_features':
-          result = getAffectedFeatures(ctx, input as { base?: string; minimumConfidence?: number });
+          result = await getAffectedFeatures(ctx, input as { base?: string; minimumConfidence?: number });
           break;
         case 'get_applicable_instructions':
-          result = getApplicableInstructions(ctx, input as { featureId: string });
+          result = await getApplicableInstructions(ctx, input as { featureId: string });
           break;
         default:
           return {

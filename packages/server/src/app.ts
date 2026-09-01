@@ -257,14 +257,17 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     return { featureId: id, evidence };
   });
 
-  app.get('/api/changes', async (_req, reply) => {
+  app.get('/api/changes', async (req, reply) => {
     const project = getProject(db);
     if (!project) {
       return fail(reply, 'PROJECT_NOT_INITIALIZED', 'Run "featuremap init" and "featuremap scan" first.', 404);
     }
     // Impact traversal over evidence-backed relations only
     // (AGENTS.md §9); low-confidence hits stay unsurfaced.
-    const impact = analyzeImpact(options.repoRoot, dbPath);
+    // Optional `range` query turns this into a commit-range analysis
+    // (ADR-0004 §1): ?range=main..HEAD
+    const query = req.query as { range?: string };
+    const impact = await analyzeImpact(options.repoRoot, { range: query.range, dbPath });
     const body: ChangesResponse = {
       currentBranch: impact.currentBranch,
       baseBranch: impact.baseBranch ?? project.baseBranch,

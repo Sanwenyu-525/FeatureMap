@@ -99,3 +99,45 @@ export async function hunksForRange(repoRoot: string, from: string, to: string):
   const { stdout } = await $`git -C ${repoRoot} diff --unified=0 --no-color ${from} ${to}`;
   return parseDiffHunks(stdout);
 }
+
+/** Parsed range change row: new-side path and change type. */
+export interface RangeChangeFile {
+  path: string;
+  changeType: ChangeType;
+}
+
+function mapDiffStatus(code: string): ChangeType | undefined {
+  switch (code) {
+    case 'A':
+      return 'added';
+    case 'M':
+      return 'modified';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    default:
+      return undefined;
+  }
+}
+
+/** Changed files for a from..to snapshot pair (`git diff --name-status`). */
+export function parseNameStatus(raw: string): RangeChangeFile[] {
+  const files: RangeChangeFile[] = [];
+  for (const line of raw.split('\n')) {
+    if (line.trim() === '') continue;
+    const [status, ...rest] = line.split('\t');
+    const changeType = mapDiffStatus(status?.charAt(0) ?? '');
+    if (!changeType) continue;
+    const path = changeType === 'renamed' ? rest[1] ?? rest[0] : rest[0];
+    if (!path) continue;
+    files.push({ path: path.replace(/\\/g, '/'), changeType });
+  }
+  return files;
+}
+
+/** Changed files for a from..to snapshot pair (native git CLI, on demand). */
+export async function filesForRange(repoRoot: string, from: string, to: string): Promise<RangeChangeFile[]> {
+  const { stdout } = await $`git -C ${repoRoot} diff --name-status --no-color ${from} ${to}`;
+  return parseNameStatus(stdout);
+}

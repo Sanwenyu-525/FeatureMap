@@ -148,11 +148,12 @@ program
 
 program
   .command('impact')
-  .description('基于证据遍历，分析当前变更影响哪些功能。')
-  .action(async () => {
+  .description('基于证据遍历，分析变更影响哪些功能。可传提交区间查看历史变更的影响（ADR-0004）。')
+  .argument('[range]', '可选：提交区间（HEAD、HEAD~1..HEAD、main..HEAD）；缺省为工作树 + 分支差异')
+  .action(async (range?: string) => {
     try {
       const { analyzeImpact } = await import('@featuremap/pipeline');
-      const result = analyzeImpact(process.cwd());
+      const result = await analyzeImpact(process.cwd(), { range });
       console.log(`分支：${result.currentBranch ?? '未知'}（基准：${result.baseBranch ?? '未知'}）`);
       console.log('');
       console.log(`变更文件（${result.changedFiles.length}）：`);
@@ -160,7 +161,7 @@ program
         console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
       }
       if (result.changedFiles.length === 0) {
-        console.log('  （未检测到未提交或分支变更）');
+        console.log('  （未检测到该区间的变更）');
       }
       console.log('');
       console.log(`受影响功能（${result.affectedFeatures.length}）：`);

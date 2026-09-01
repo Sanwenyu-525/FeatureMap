@@ -1,5 +1,6 @@
 /**
- * Change impact traversal — Milestone 4 (docs/DEVELOPMENT_PLAN.md).
+ * Change impact traversal — Milestone 4, extended for commit ranges in
+ * Milestone 11 (ADR-0004 §1, docs/DEVELOPMENT_PLAN.md Milestone 11).
  *
  * `featuremap impact` starts from Git changes and traverses ONLY
  * evidence-backed relations (AGENTS.md §9). Low-confidence hits are
@@ -9,10 +10,26 @@
  *   1. Direct: changed file → BELONGS_TO_FEATURE (feature_assets row)
  *   2. Reverse: changed file ← IMPORTS (dependents) → BELONGS_TO_FEATURE
  *      (one transitive hop, penalised confidence)
+ *
+ * Change sources (ADR-0004 §1):
+ *   no range          — working tree + branch diff (Milestone 4 behavior)
+ *   `HEAD`            — HEAD~1..HEAD
+ *   `A..B`            — arbitrary snapshot range, diff computed on demand
+ *
+ * For a commit range, changed files come from `git diff --name-status`
+ * and changed symbols from hunk-lines ∩ scanned symbol spans, so the
+ * reasons carry symbol-level detail (Milestone 11 exit criteria).
  */
-import { eq, or, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { isSurfaceable, loadConfig } from '@featuremap/core';
-import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
+import { openDatabase, defaultDatabasePath, schema, type FeatureMapDatabase } from '@featuremap/db';
+import {
+  parseChangeSources,
+  hunksForRange,
+  filesForRange,
+  extractChangedSymbols,
+  type SymbolSpan,
+} from './git/index.js';
 
 export interface AffectedFeature {
   featureId: string;
@@ -36,24 +53,57 @@ export interface ImpactResult {
 const DIRECT_CONFIDENCE = 1.0;
 const TRANSITIVE_CONFIDENCE = 0.8;
 
-export function analyzeImpact(repoRoot: string, dbPathOverride?: string): ImpactResult {
+export interface ImpactOptions {
+  /** Commit range (ADR-0004 §1); omitted keeps working-tree + branch-diff. */
+  range?: string;
+  dbPath?: string;
+}
+
+export async function analyzeImpact(repoRoot: string, options: ImpactOptions = {}): Promise<ImpactResult> {
+  const { range, dbPath: dbPathOverride } = options;
   const config = loadConfig(repoRoot).config;
   const { db, sqlite } = openDatabase(dbPathOverride ?? defaultDatabasePath(repoRoot));
   try {
-    // Current change set: working tree + branch diff (evidence-backed via
-    // MODIFIED_BY rows persisted by the scan).
-    const changedFileRows = db
-      .select()
-      .from(schema.commitFiles)
-      .where(or(eq(schema.commitFiles.commitSha, 'WORKING_TREE'), eq(schema.commitFiles.commitSha, 'BRANCH_DIFF')))
-      .all();
+    // ---- Collect the change set from the requested sources --------------
+    const changedFileRows: Array<{ path: string; changeType: string; commitSha: string }> = [];
+    const changedSymbolsByPath = new Map<string, string[]>();
+    for (const source of parseChangeSources(range)) {
+      if (source.kind === 'working-tree' || source.kind === 'branch-diff') {
+        const pseudoSha = source.kind === 'working-tree' ? 'WORKING_TREE' : 'BRANCH_DIFF';
+        changedFileRows.push(
+          ...db
+            .select()
+            .from(schema.commitFiles)
+            .where(eq(schema.commitFiles.commitSha, pseudoSha))
+            .all()
+            .map((row) => ({ path: row.path, changeType: row.changeType, commitSha: row.commitSha })),
+        );
+      } else {
+        // Commit range: native git diff on demand (ADR-0004 §1); diff
+        // content is never persisted. Hunk lines ∩ symbol spans give
+        // symbol-level reasons (Milestone 11).
+        for (const file of await filesForRange(repoRoot, source.from, source.to)) {
+          changedFileRows.push({
+            path: file.path,
+            changeType: file.changeType,
+            commitSha: `${source.from}..${source.to}`,
+          });
+        }
+        const spans = loadSymbolSpans(db);
+        for (const sym of extractChangedSymbols(await hunksForRange(repoRoot, source.from, source.to), spans)) {
+          const existing = changedSymbolsByPath.get(sym.path) ?? [];
+          if (!existing.includes(sym.name)) existing.push(sym.name);
+          changedSymbolsByPath.set(sym.path, existing);
+        }
+      }
+    }
 
-    const changedFiles = changedFileRows.map((c) => ({
-      path: c.path,
-      changeType: c.changeType,
-      commitSha: c.commitSha,
-    }));
+    const changedFiles = changedFileRows;
     const changedPaths = new Set(changedFiles.map((c) => c.path));
+    const changedSymbolNote = (path: string): string | undefined => {
+      const symbols = changedSymbolsByPath.get(path);
+      return symbols && symbols.length > 0 ? `; changed symbol(s): ${symbols.join(', ')}` : undefined;
+    };
 
     // Feature membership: featureId → asset paths with confidence.
     const membership = new Map<string, { path: string; confidence: number }[]>();
@@ -89,12 +139,17 @@ export function analyzeImpact(repoRoot: string, dbPathOverride?: string): Impact
     };
 
     for (const changed of changedPaths) {
+      const symbolNote = changedSymbolNote(changed);
       // Hop 1 — direct membership.
       for (const [featureId, entries] of membership) {
         for (const entry of entries) {
           if (entry.path !== changed) continue;
           const confidence = Math.min(entry.confidence, DIRECT_CONFIDENCE);
-          bump(featureId, confidence, `${entry.path} belongs to this feature (${entry.confidence})`);
+          bump(
+            featureId,
+            confidence,
+            `${entry.path} belongs to this feature (${entry.confidence})${symbolNote ?? ''}`,
+          );
         }
       }
       // Hop 2 — reverse imports (files that depend on the changed file).
@@ -184,4 +239,29 @@ export function analyzeImpact(repoRoot: string, dbPathOverride?: string): Impact
   } finally {
     sqlite.close();
   }
+}
+
+/** Symbol line spans from the latest scan (file path joined in). */
+function loadSymbolSpans(db: FeatureMapDatabase): SymbolSpan[] {
+  return db
+    .select({
+      id: schema.symbols.id,
+      name: schema.symbols.name,
+      kind: schema.symbols.kind,
+      startLine: schema.symbols.startLine,
+      endLine: schema.symbols.endLine,
+      path: schema.files.path,
+    })
+    .from(schema.symbols)
+    .innerJoin(schema.files, eq(schema.symbols.fileId, schema.files.id))
+    .all()
+    .filter((r) => r.startLine !== null && r.endLine !== null)
+    .map((r) => ({
+      symbolId: r.id,
+      name: r.name,
+      kind: r.kind,
+      path: r.path,
+      startLine: r.startLine as number,
+      endLine: r.endLine as number,
+    }));
 }
