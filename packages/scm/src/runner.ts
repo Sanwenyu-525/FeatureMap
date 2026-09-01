@@ -9,6 +9,9 @@
  * Analysis failures are reported as a `failure` check run instead of
  * being swallowed; transport errors (auth/network) propagate — the
  * runner cannot post a failure through a broken provider.
+ *
+ * Consumed by the GitHub Action (via `featuremap gh check`) and the
+ * GitHub App (webhook dispatch, ADR-0007).
  */
 import { buildPrReport, runScan } from '@featuremap/pipeline';
 import { DEFAULT_CHECK_NAME, renderPrCheck, type RenderedCheck } from './check-renderer.js';

@@ -323,8 +323,26 @@ program
     const ghRepo = parseGitHubRepository(process.env.GITHUB_REPOSITORY);
     const owner = opts.owner ?? ghRepo.owner;
     const repo = opts.repo ?? ghRepo.repo;
-    const headSha = opts.head ?? process.env.GITHUB_SHA;
-    const base = opts.base ?? process.env.GITHUB_BASE_REF ?? 'main';
+    // Prefer the pull_request event payload (base.sha/head.sha) — the
+    // base SHA is fetched by the workflow, so the range is exact and the
+    // check attaches to the PR head. GITHUB_SHA on pull_request is the
+    // merge commit and GITHUB_BASE_REF is a branch name that may not
+    // exist in a shallow/ref-pinned checkout.
+    let headSha = opts.head ?? process.env.GITHUB_SHA;
+    let base = opts.base ?? process.env.GITHUB_BASE_REF;
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    if (eventPath) {
+      try {
+        const event = JSON.parse(readFileSync(eventPath, 'utf8')) as {
+          pull_request?: { base?: { sha?: string }; head?: { sha?: string } };
+        };
+        if (event.pull_request?.base?.sha) base = event.pull_request.base.sha;
+        if (event.pull_request?.head?.sha) headSha = event.pull_request.head.sha;
+      } catch {
+        // Malformed event payload: fall back to flags/env below.
+      }
+    }
+    base = base ?? 'main';
     const range = `${base}..HEAD`;
 
     if (!owner || !repo) {

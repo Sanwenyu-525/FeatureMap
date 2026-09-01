@@ -23,12 +23,15 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
+          # Node 22: better-sqlite3 11.x crashes on Node 24 at teardown
+          # (RemoveEnvironmentCleanupHook assertion). Composite steps use
+          # the node on PATH, so 22 keeps install + CLI consistent.
           node-version: 22
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build FeatureMap packages
-        run: pnpm -r --filter @featuremap/github-action... build
+        run: pnpm -r --filter @featuremap/cli... build
       - name: Prepare FeatureMap config (committed config is gitignored)
         run: |
           cat > featuremap.yaml <<'EOF'
