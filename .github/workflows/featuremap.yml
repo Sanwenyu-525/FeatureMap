@@ -23,12 +23,14 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Must match the action runtime (runs.using node24) so the
+          # native better-sqlite3 binding is compiled for the same ABI.
+          node-version: 24
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build FeatureMap packages
-        run: pnpm -r --filter @featuremap/github-action... build
+        run: pnpm -r --filter @featuremap/cli... build
       - name: Prepare FeatureMap config (committed config is gitignored)
         run: |
           cat > featuremap.yaml <<'EOF'
