@@ -385,6 +385,44 @@ A feature page shows a commit timeline with contributors and churn
 for the configured log window, each entry traceable to its commit and
 feature mapping evidence.
 
+## Milestone 15 — Feature-aware PR Report (v0.4.0)
+
+Status: in progress (feature/pr-intelligence branch).
+
+Goal: turn impact into a local, transport-free feature-aware PR
+report — the analysis a GitHub Check/comment will later consume.
+
+Implement:
+
+- `featuremap pr [<range>] [--json]` — same change-source abstraction
+  as impact (`main..HEAD`, `HEAD`, or working tree + branch diff)
+- risk band HIGH/MEDIUM/LOW with an explainable rule table (direct
+  core change, public API/route/CLI entry, shared dependency, database
+  schema, unchanged related tests, many features) — bands, never an
+  opaque percentage (ADR-0005 §2)
+- test coverage: each recommended test marked changed (✓) or
+  "potential missing coverage" (⚠), never "tests missing" (ADR-0005 §3)
+- mapping drift: `relation_broken` (accepted/declared file deleted or
+  renamed) and `new_candidate` (changed symbol in an owned file not yet
+  confirmed) — deterministic, detect → suggest, never auto-create
+  (ADR-0005 §4)
+- `analyzeImpact` returns an additive `changedSymbols` field
+
+CLI:
+
+```bash
+featuremap pr main..HEAD
+featuremap pr HEAD
+```
+
+Exit criteria:
+
+`featuremap pr main..HEAD` on a scripted-commit fixture reports
+affected features with severity, an explainable risk band, changed /
+unchanged related tests, and drift signals — with no cross-feature
+noise. The GitHub transport (Action → Check → App) starts only after
+the local report proves daily value.
+
 ## Phase 3 acceptance scenario
 
 Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,
@@ -418,9 +456,10 @@ Not acceptable: Register / Profile / Checkout / Settings appearing
 because they import shared code. If this scenario passes stably,
 Phase 3 delivers its intended value step over v0.2.
 
-Phase 4 (GitHub/GitLab PR Intelligence) starts only after the local
-loop above proves daily value — automating output nobody reads
-locally is not a goal.
+Phase 4 is staged (ADR-0005): the local feature-aware PR report
+(Milestone 15, v0.4.0) is the analysis; GitHub/GitLab transport
+(Action → Check → App) starts only after that local report proves
+daily value — automating output nobody reads locally is not a goal.
 
 ## Mapping quality (cross-cutting, starts with Milestone 6)
 

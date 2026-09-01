@@ -214,6 +214,82 @@ program
   });
 
 program
+  .command('pr')
+  .description('功能视角的 Pull Request 分析：受影响功能 + 风险 + 测试覆盖 + 映射漂移（Phase 4，v0.4.0）。')
+  .argument('[range]', '可选：提交区间（HEAD、main..HEAD）；缺省为工作树 + 分支差异')
+  .option('--json', '输出机器可读的 JSON')
+  .action(async (range: string | undefined, opts: { json?: boolean }) => {
+    try {
+      const { buildPrReport } = await import('@featuremap/pipeline');
+      const report = await buildPrReport(process.cwd(), { range });
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+        return;
+      }
+      console.log(`PR 分析（featuremap pr）  范围：${range ?? '工作树 + 分支差异'}`);
+      console.log(`分支：${report.currentBranch ?? '未知'}（基准：${report.baseBranch ?? '未知'}）`);
+      console.log('');
+      console.log(`变更文件（${report.changedFiles.length}）：`);
+      for (const f of report.changedFiles) {
+        console.log(`  [${f.changeType.toUpperCase()}] ${f.path}`);
+      }
+      if (report.changedFiles.length === 0) console.log('  （未检测到该区间的变更）');
+      console.log('');
+      console.log(`受影响功能（${report.affectedFeatures.length}）：`);
+      let lastSeverity: string | undefined;
+      for (const f of report.affectedFeatures) {
+        if (f.severity !== lastSeverity) {
+          console.log(`  ${f.severity}`);
+          lastSeverity = f.severity;
+        }
+        console.log(`    ${f.featureName}（${f.featureId}）—— 置信度 ${f.confidence}`);
+        for (const reason of f.reasons) console.log(`      · ${reason}`);
+      }
+      if (report.affectedFeatures.length === 0) console.log('  （没有达到可展示置信度的影响）');
+      if (report.sharedInfrastructure.length > 0) {
+        console.log('');
+        console.log('共享基础设施（不归属任何单一功能）：');
+        for (const s of report.sharedInfrastructure) console.log(`  ${s.path} —— ${s.reason}`);
+      }
+      console.log('');
+      console.log(`风险：${report.risk.band}`);
+      if (report.risk.contributions.length === 0) {
+        console.log('  （无显著风险信号）');
+      }
+      for (const c of report.risk.contributions) console.log(`  · +${c.points} ${c.reason}`);
+      if (report.testCoverage.length > 0) {
+        console.log('');
+        console.log('相关测试（⚠ 为潜在缺失覆盖，非"测试缺失"）：');
+        for (const t of report.testCoverage) {
+          console.log(`  ${t.changed ? '✓' : '⚠'} ${t.path}`);
+        }
+      }
+      if (report.mappingDrift.length > 0) {
+        console.log('');
+        console.log('映射漂移：');
+        for (const d of report.mappingDrift) {
+          console.log(`  [${d.kind}] ${d.featureName ?? d.featureId}：${d.reason}`);
+        }
+      }
+      if (report.suppressedUncertainty.length > 0) {
+        console.log('');
+        console.log('未达展示阈值的低置信度影响（显式呈现不确定性）：');
+        for (const u of report.suppressedUncertainty) {
+          console.log(`  ${u.featureName ?? u.featureId} —— 置信度 ${u.confidence}（${u.reason}）`);
+        }
+      }
+      if (report.staleDocuments.length > 0) {
+        console.log('');
+        console.log('可能过期的文档：');
+        for (const d of report.staleDocuments) console.log(`  ${d.path} —— ${d.reason}`);
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('feature')
   .description('以终端友好的形式输出功能上下文。')
   .argument('<name-or-id>', '功能名称或 ID')
