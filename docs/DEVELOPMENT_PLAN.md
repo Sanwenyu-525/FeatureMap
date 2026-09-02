@@ -679,7 +679,17 @@ Implement:
 Exit criteria: clicking a feature opens its core code; every core asset
 navigates to source (Quality Gate: Feature → Code 100% navigable).
 
-### Milestone 21 — Code Intelligence (v0.6.2) — first acceptance checkpoint
+### Milestone 21 — Code Intelligence (v0.6.2) — ✅ Complete
+
+Status: complete. `packages/pipeline/src/code-intelligence`
+(SymbolFeatureIndex in-memory read model: bySymbolId + symbolsByFile,
+lazy build, repo-generation invalidation) + IDE RPC
+(`symbols.resolve`, `code.relatedFeatures`, `code.intelligence`,
+`code.documentIntelligence`, `code.explainRelation`) + VS Code Hover /
+CodeLens providers and Show Related Features / Explain Relation
+commands. See docs/IDE.md for the RPC contract, confidence policy and
+adapter boundary. Planned by the web-planning loop (ChatGPT) before
+implementation.
 
 Goal: bidirectional navigation — Code → Related Features via hover,
 CodeLens, and an explain-relation path.
@@ -708,7 +718,16 @@ Exit criteria: cursor on a core symbol shows its owning feature with
 relation type; hover stays short; CodeLens appears only for
 confirmed/high-confidence; every explanation carries evidence.
 
-### Milestone 22 — Live Change Impact (v0.6.3)
+### Milestone 22 — Live Change Impact (v0.6.3) — ✅ Complete
+
+Status: complete. `packages/pipeline/src/live-impact`
+(`refreshCurrentImpact` orchestration: incremental scan →
+`analyzeImpact(WORKING_TREE)` → generation-guarded snapshot store) +
+IDE RPC `impact.refresh` / `impact.current` (refresh invalidates the
+SymbolFeatureIndex) + extension save adapter (aggregate + 400ms
+debounce + single in-flight, never drops saves) + status bar
+"N affected" + Current Change Impact TreeView + manual refresh command.
+Planned by the web-planning loop (ChatGPT) before implementation.
 
 Goal: working-tree edits → affected features while coding.
 

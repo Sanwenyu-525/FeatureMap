@@ -14,6 +14,7 @@ import {
   type IdeExplainRelation,
   type IdeFeature,
   type IdeFeatureDetail,
+  type IdeImpactRefreshResult,
   type IdeProjectStatus,
   type IdeRelatedFeaturesResult,
   type IdeSymbolRef,
@@ -22,6 +23,8 @@ import { FeatureTreeProvider } from './providers/feature-tree-provider';
 import { registerHoverProvider } from './providers/hover-provider';
 import { registerCodeLensProvider } from './providers/codelens-provider';
 import { resolveSymbolRef } from './providers/position-symbol';
+import { ImpactRefreshScheduler } from './providers/save-adapter';
+import { ImpactTreeProvider } from './providers/impact-tree-provider';
 
 export function activate(context: vscode.ExtensionContext): void {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -233,6 +236,54 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
+  const impactTreeProvider = new ImpactTreeProvider(getClient);
+  const impactView = vscode.window.createTreeView('featuremap.impact', { treeDataProvider: impactTreeProvider });
+  context.subscriptions.push(impactView);
+
+  async function refreshImpact(files: string[], trigger: 'save' | 'manual'): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    statusBar.text = '$(sync~spin) FeatureMap: analyzing…';
+    statusBar.command = 'featuremap.showCurrentImpact';
+    statusBar.show();
+    try {
+      const result = await c.request<IdeImpactRefreshResult>('impact.refresh', { savedFiles: files, trigger });
+      const n = result.snapshot.summary.affectedFeatureCount;
+      statusBar.text = n > 0 ? `$(check) FeatureMap · ${n} affected` : '$(check) FeatureMap';
+      statusBar.command = 'featuremap.showCurrentImpact';
+      statusBar.tooltip = `Impact refreshed at ${result.snapshot.refreshedAt}`;
+      await impactTreeProvider.load();
+    } catch (err) {
+      statusBar.text = '$(error) FeatureMap: impact unavailable';
+      statusBar.tooltip = err instanceof Error ? err.message : String(err);
+    }
+    statusBar.show();
+  }
+
+  const impactScheduler = new ImpactRefreshScheduler((files) => refreshImpact(files, 'save'));
+  context.subscriptions.push({ dispose: () => impactScheduler.dispose() });
+
+  // Save-triggered impact (v0.6.3 plan §8/§9): aggregate saves, never
+  // per-keystroke, never scan.run from the extension.
+  const saveSubscription = vscode.workspace.onDidSaveTextDocument((document) => {
+    const root = repoRoot();
+    if (!root || document.uri.scheme !== 'file') return;
+    const abs = document.uri.fsPath;
+    if (!abs.startsWith(root)) return;
+    const rel = abs.slice(root.length).replace(/\\/g, '/').replace(/^\//, '');
+    if (rel.startsWith('node_modules/') || rel.startsWith('.git/') || rel.startsWith('.featuremap/')) return;
+    impactScheduler.push(rel);
+  });
+  context.subscriptions.push(saveSubscription);
+
+  function openImpactFile(path?: string): void {
+    const root = repoRoot();
+    if (!root || !path) return;
+    void vscode.workspace
+      .openTextDocument(vscode.Uri.file(join(root, path)))
+      .then((doc) => vscode.window.showTextDocument(doc));
+  }
+
   const treeProvider = new FeatureTreeProvider(getClient);
   const treeView = vscode.window.createTreeView('featuremap.features', { treeDataProvider: treeProvider });
   context.subscriptions.push(treeView);
@@ -252,6 +303,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('featuremap.explainRelation', (featureId?: string, symbolId?: string) =>
       explainRelation(featureId, symbolId),
     ),
+    vscode.commands.registerCommand('featuremap.showCurrentImpact', () => {
+      void vscode.commands.executeCommand('featuremap.impact.focus');
+      void impactTreeProvider.load();
+    }),
+    vscode.commands.registerCommand('featuremap.refreshCurrentImpact', () => {
+      void refreshImpact([], 'manual');
+    }),
+    vscode.commands.registerCommand('featuremap.openImpactFile', (path?: string) => openImpactFile(path)),
     vscode.commands.registerCommand('featuremap.refresh', () => {
       void (async () => {
         await treeProvider.load();

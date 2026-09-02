@@ -23,7 +23,14 @@ only in `src/providers/position-symbol.ts` (plan §A1).
 | `code.intelligence` | compact Hover payload (feature, deps, tests) |
 | `code.documentIntelligence` | one batch call per document for CodeLens |
 | `code.explainRelation` | evidence chain behind one relation |
+| `impact.refresh` | save-triggered orchestration: incremental scan → `analyzeImpact(WORKING_TREE)` → cached snapshot (invalidates the code-intelligence index) |
+| `impact.current` | cheap read of the last snapshot — never triggers analysis |
 | `scan.run` / `init.run` | maintenance (invalidates the index) |
+
+`impact.refresh` is the **only** save-triggered entry point; the
+extension never calls `scan.run` + `analyzeImpact` itself (v0.6.3
+plan §A2). `savedFiles` is an incremental-scan hint; the impact scope
+is always the whole working tree.
 
 `SymbolRef`:
 
@@ -72,6 +79,23 @@ In-memory **read model** (never a second source of truth): `bySymbolId`
 (relations) + `symbolsByFile` (ranges for line fallback). Built lazily
 per repository, invalidated whole-repository on `scan.run` (plan §5.5 —
 no row-level cache sync until profiling proves a bottleneck).
+
+## Live Change Impact (v0.6.3)
+
+- Extension only listens to `onDidSaveTextDocument` (never
+  `onDidChangeTextDocument`), aggregates saved paths into a Set, waits
+  400ms, and issues **one** `impact.refresh`; a single in-flight
+  refresh never drops saves that arrive meanwhile (plan §9).
+- Status bar: `FeatureMap · N affected` (N = `summary.affectedFeatureCount`,
+  exactly `affectedFeatures.length`), `FeatureMap: analyzing…` while
+  refreshing, `FeatureMap` when 0 affected, error state on failure.
+  No auto-popups (plan §43).
+- Current Change Impact TreeView renders the cached snapshot only:
+  HIGH → MEDIUM → LOW groups, each Feature with Why (reasons verbatim
+  from `analyzeImpact`), Tests and Documents. Clicking a Feature opens
+  it; Tests/Documents open the file.
+- Manual `Refresh Current Change Impact` covers Git checkouts and
+  external edits; it never falls back to full filesystem watching.
 
 ## Adapter boundary (extension)
 

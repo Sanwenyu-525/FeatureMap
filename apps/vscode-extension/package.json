@@ -23,6 +23,9 @@
       { "command": "featuremap.searchFeatures", "title": "FeatureMap: Search Features" },
       { "command": "featuremap.showRelatedFeatures", "title": "FeatureMap: Show Related Features" },
       { "command": "featuremap.explainRelation", "title": "FeatureMap: Explain Relation" },
+      { "command": "featuremap.showCurrentImpact", "title": "FeatureMap: Show Current Change Impact" },
+      { "command": "featuremap.refreshCurrentImpact", "title": "FeatureMap: Refresh Current Change Impact" },
+      { "command": "featuremap.openImpactFile", "title": "FeatureMap: Open Impact File" },
       { "command": "featuremap.toggleGrouping", "title": "FeatureMap: Toggle Feature Grouping" },
       { "command": "featuremap.refresh", "title": "FeatureMap: Refresh" }
     ],
@@ -38,6 +41,11 @@
           "name": "Features",
           "when": "featuremap.connected",
           "find": { "where": "view" }
+        },
+        {
+          "id": "featuremap.impact",
+          "name": "Current Change Impact",
+          "when": "featuremap.connected"
         }
       ]
     },
@@ -45,7 +53,8 @@
       "view/title": [
         { "command": "featuremap.refresh", "when": "view == featuremap.features", "group": "navigation@1" },
         { "command": "featuremap.toggleGrouping", "when": "view == featuremap.features", "group": "navigation@2" },
-        { "command": "featuremap.searchFeatures", "when": "view == featuremap.features", "group": "navigation@3" }
+        { "command": "featuremap.searchFeatures", "when": "view == featuremap.features", "group": "navigation@3" },
+        { "command": "featuremap.refreshCurrentImpact", "when": "view == featuremap.impact", "group": "navigation@1" }
       ]
     }
   },

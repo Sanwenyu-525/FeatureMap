@@ -117,6 +117,46 @@ export interface IdeExplainRelation {
   chain: IdeExplainChainStep[];
 }
 
+/** Live Change Impact DTOs (v0.6.3). */
+export interface IdeCurrentAffectedFeature {
+  featureId: string;
+  name: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasons: string[];
+  tests: string[];
+  documents: string[];
+}
+
+export interface IdeCurrentImpactSnapshot {
+  repoRoot: string;
+  generation: number;
+  refreshedAt: string;
+  trigger: { type: 'save' | 'manual' | 'scan'; savedFiles: string[] };
+  summary: {
+    affectedFeatureCount: number;
+    bySeverity: Record<'HIGH' | 'MEDIUM' | 'LOW', number>;
+    recommendedTestCount: number;
+    hasSharedInfrastructureImpact: boolean;
+    suppressedUncertaintyCount: number;
+  };
+  changedFiles: Array<{ path: string; changeType: string }>;
+  affectedFeatures: IdeCurrentAffectedFeature[];
+  sharedInfrastructure: unknown[];
+  recommendedTests: unknown[];
+  suppressedUncertainty: unknown[];
+  potentiallyStaleDocuments: unknown[];
+}
+
+export interface IdeImpactCurrent {
+  available: boolean;
+  snapshot?: IdeCurrentImpactSnapshot;
+}
+
+export interface IdeImpactRefreshResult {
+  snapshot: IdeCurrentImpactSnapshot;
+  refresh: { scannedFiles: number; changedFiles: number; durationMs: number };
+}
+
 export interface ClientTransport {
   stdin: Writable;
   stdout: Readable;
