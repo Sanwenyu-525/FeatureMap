@@ -745,7 +745,20 @@ Implement:
 Exit criteria: accept/reject persists across rescans; drift entries
 appear in Problems and clear after handling; drift never auto-accepts.
 
-### Milestone 24 — AI Context UX (v0.6.5)
+### Milestone 24 — AI Context UX (v0.6.5) — ✅ Complete
+
+Status: complete. Phase 6 wrap-up: `packages/context` gained the
+canonical presentation projection `buildFeatureContextDocument` (maps
+the budgeted FeatureContext → sections + Recommended Files from the
+final ranked projection + deterministic contextId + artifact path +
+canonical Markdown renderer); the CLI `context` command now outputs
+that canonical Markdown; a single new IDE RPC `context.build` feeds
+the extension Build Feature Context / Copy Agent Context / Build Task
+Context commands, a `featuremap-context:` Markdown Preview (snapshot,
+rebuild on demand), explicit Save to `.featuremap/context/<id>.md`,
+and Recommended Files QuickPick navigation. Read-only invariant, task
+only reranks, no source bodies (regression-guarded). Planned by the
+web-planning loop (ChatGPT) before implementation.
 
 Goal: bring Phase 5 context into the IDE — build/copy agent context and
 task context.
