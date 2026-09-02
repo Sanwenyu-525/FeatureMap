@@ -13,7 +13,20 @@ import { and, eq, desc, inArray } from 'drizzle-orm';
 import { stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILE_NAME, RUNTIME_DIR_NAME, defaultConfig } from '@featuremap/core';
 import { defaultDatabasePath, openDatabase, schema, type FeatureMapDatabase } from '@featuremap/db';
-import { runScan } from '@featuremap/pipeline';
+import {
+  runScan,
+  SymbolFeatureIndex,
+  getCodeIntelligence,
+  getDocumentIntelligence,
+  explainFeatureRelation,
+  type CodeIntelligenceResult,
+  type DocumentSymbolFeature,
+  type ExplainFeatureRelationResult,
+  type RelatedFeaturesOptions,
+  type RelatedFeaturesResult,
+  type ResolvedSymbol,
+  type SymbolRef,
+} from '@featuremap/pipeline';
 import { DomainErrorCode, RpcError, RpcErrorCode } from './rpc.js';
 
 export interface IdeServiceOptions {
@@ -100,6 +113,21 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       sqlite = undefined;
       db = undefined;
     }
+  };
+
+  // SymbolFeatureIndex: in-memory read model built once per repository
+  // generation (plan §5). Built lazily; invalidated on scan.run so the
+  // next query rebuilds from the fresh store.
+  let index: SymbolFeatureIndex | undefined;
+  const getIndex = (): SymbolFeatureIndex => {
+    requireInitialized();
+    if (!index) {
+      index = SymbolFeatureIndex.build(repoRoot, dbPath);
+    }
+    return index;
+  };
+  const invalidateIndex = (): void => {
+    index = undefined;
   };
 
   const requireInitialized = (): void => {
@@ -293,7 +321,7 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       return { created: true, configPath };
     },
 
-    /** scan.run — incremental (or full) scan; closes the DB so reads refresh. */
+    /** scan.run — incremental (or full) scan; invalidates index + DB connection. */
     'scan.run': async (params): Promise<{ status: string; counts: Record<string, number> }> => {
       requireInitialized();
       const input = (params ?? {}) as { mode?: string };
@@ -302,7 +330,57 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       }
       const result = await runScan(repoRoot, { full: input.mode === 'full', dbPath });
       closeDb();
+      invalidateIndex();
       return { status: 'completed', counts: result.counts };
+    },
+
+    /** symbols.resolve — editor hint → stored symbol (plan §4.1). */
+    'symbols.resolve': (params): ResolvedSymbol | null => {
+      const input = (params ?? {}) as { symbol?: SymbolRef };
+      if (typeof input.symbol?.filePath !== 'string' || input.symbol.filePath === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'symbol.filePath is required.');
+      }
+      return getIndex().resolveSymbol(input.symbol);
+    },
+
+    /** code.relatedFeatures — Symbol → Related Features (plan §4.2). */
+    'code.relatedFeatures': (params): RelatedFeaturesResult | null => {
+      const input = (params ?? {}) as { symbol?: SymbolRef; options?: RelatedFeaturesOptions };
+      if (typeof input.symbol?.filePath !== 'string' || input.symbol.filePath === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'symbol.filePath is required.');
+      }
+      return getIndex().relatedFeatures(input.symbol, input.options);
+    },
+
+    /** code.intelligence — compact Hover payload (plan §4.3). */
+    'code.intelligence': (params): CodeIntelligenceResult | null => {
+      const input = (params ?? {}) as { symbol?: SymbolRef };
+      if (typeof input.symbol?.filePath !== 'string' || input.symbol.filePath === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'symbol.filePath is required.');
+      }
+      return getCodeIntelligence(repoRoot, input.symbol, { index: getIndex(), dbPath });
+    },
+
+    /** code.documentIntelligence — one batch call per document for CodeLens (plan §8.4). */
+    'code.documentIntelligence': (params): DocumentSymbolFeature[] => {
+      const input = (params ?? {}) as { filePath?: string };
+      if (typeof input.filePath !== 'string' || input.filePath === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'filePath is required.');
+      }
+      return getDocumentIntelligence(input.filePath, { index: getIndex() });
+    },
+
+    /** code.explainRelation — evidence chain behind one relation (plan §4.4). */
+    'code.explainRelation': (params): ExplainFeatureRelationResult => {
+      const input = (params ?? {}) as { featureId?: string; target?: { id?: string } | string };
+      if (typeof input.featureId !== 'string' || input.featureId === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'featureId is required.');
+      }
+      const targetId = typeof input.target === 'string' ? input.target : input.target?.id;
+      if (typeof targetId !== 'string' || targetId === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'target.id is required.');
+      }
+      return explainFeatureRelation(repoRoot, input.featureId, targetId, dbPath);
     },
     },
     close: closeDb,

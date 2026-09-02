@@ -171,3 +171,95 @@ describe('features.get symbol navigation (v0.6.1)', () => {
     }
   });
 });
+
+describe('code intelligence RPC (v0.6.2)', () => {
+  let ciDir: string;
+  let ciDb: string;
+  let ciService: ReturnType<typeof createIdeService>;
+
+  const loginSymbol = (): { filePath: string; name: string; startLine: number } => ({
+    filePath: 'src/auth/login-handler.ts',
+    name: 'loginHandler',
+    startLine: 3,
+  });
+
+  beforeAll(async () => {
+    ciDir = mkdtempSync(join(tmpdir(), 'featuremap-ide-ci-'));
+    ciDb = join(ciDir, 'featuremap.db');
+    await runScan(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login'), { dbPath: ciDb });
+    ciService = createIdeService({ repoRoot: join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login'), dbPath: ciDb });
+  });
+
+  afterAll(() => {
+    ciService.close();
+    rmSync(ciDir, { recursive: true, force: true });
+  });
+
+  it('symbols.resolve maps an editor hint to a stored symbol', () => {
+    const r = ciService.handlers['symbols.resolve']({ symbol: loginSymbol() }) as { id: string; name: string };
+    expect(r.id).toBe('symbol:src/auth/login-handler.ts:loginHandler');
+    expect(r.name).toBe('loginHandler');
+  });
+
+  it('code.relatedFeatures returns the owning feature with relation type', () => {
+    const r = ciService.handlers['code.relatedFeatures']({ symbol: loginSymbol() }) as {
+      symbol: { id: string };
+      features: Array<{ featureId: string; relation: { type: string; status: string }; evidence: { available: boolean } }>;
+    };
+    expect(r.symbol.id).toBe('symbol:src/auth/login-handler.ts:loginHandler');
+    const login = r.features.find((f) => f.featureId === 'feature:login');
+    expect(login?.relation.type).toBe('OWNS');
+    expect(login?.relation.status).toBe('declared');
+    expect(login?.evidence.available).toBe(true);
+  });
+
+  it('code.intelligence returns a compact hover payload', () => {
+    const r = ciService.handlers['code.intelligence']({ symbol: loginSymbol() }) as {
+      symbol: { name: string };
+      primaryFeature?: { id: string };
+      directDependencies: unknown[];
+      tests: unknown[];
+    };
+    expect(r.symbol.name).toBe('loginHandler');
+    expect(r.primaryFeature?.id).toBe('feature:login');
+    expect(Array.isArray(r.directDependencies)).toBe(true);
+    expect(Array.isArray(r.tests)).toBe(true);
+  });
+
+  it('code.documentIntelligence batches symbols in one call', () => {
+    const rows = ciService.handlers['code.documentIntelligence']({ filePath: 'src/auth/login-handler.ts' }) as Array<{
+      symbol: { name: string };
+      feature: { id: string };
+      relation: string;
+    }>;
+    const login = rows.find((r) => r.symbol.name === 'loginHandler');
+    expect(login?.feature.id).toBe('feature:login');
+    expect(login?.relation).toBe('OWNS');
+  });
+
+  it('code.explainRelation reuses the stored evidence chain', () => {
+    const r = ciService.handlers['code.explainRelation']({
+      featureId: 'feature:login',
+      target: { id: 'symbol:src/auth/login-handler.ts:loginHandler' },
+    }) as { status: string; relation: string; chain: unknown[] };
+    expect(r.status).toBe('declared');
+    expect(r.relation).toBe('owns');
+    expect(Array.isArray(r.chain)).toBe(true);
+  });
+
+  it('rejects malformed params with an RpcError', () => {
+    expect(() => ciService.handlers['symbols.resolve']({})).toThrow(/filePath is required/);
+    expect(() => ciService.handlers['code.relatedFeatures']({ symbol: { name: 'x' } })).toThrow(/filePath is required/);
+    expect(() => ciService.handlers['code.documentIntelligence']({})).toThrow(/filePath is required/);
+    expect(() => ciService.handlers['code.explainRelation']({ featureId: 'feature:login' })).toThrow(/target/);
+  });
+
+  it('scan.run invalidates the index; queries still succeed afterwards', async () => {
+    const before = ciService.handlers['symbols.resolve']({ symbol: loginSymbol() }) as { id: string } | null;
+    expect(before).not.toBeNull();
+    const scan = (await ciService.handlers['scan.run']({ mode: 'incremental' })) as { status: string };
+    expect(scan.status).toBe('completed');
+    const after = ciService.handlers['symbols.resolve']({ symbol: loginSymbol() }) as { id: string } | null;
+    expect(after?.id).toBe('symbol:src/auth/login-handler.ts:loginHandler');
+  });
+});
