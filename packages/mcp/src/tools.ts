@@ -11,7 +11,7 @@ import { eq, sql } from 'drizzle-orm';
 import { isSurfaceable } from '@featuremap/core';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
 import { analyzeImpact, explainCandidate } from '@featuremap/pipeline';
-import { buildFeatureContext, type CodeEntry, type ContextEvidence, type FeatureContext } from '@featuremap/context';
+import { buildFeatureContext, documentFromContext, type CodeEntry, type ContextEvidence, type FeatureContext } from '@featuremap/context';
 
 export interface ToolContext {
   repoRoot: string;
@@ -197,6 +197,11 @@ export async function getFeatureContext(
       budget: c.budget,
       evidence: c.evidence,
       truncationNote: c.truncationNote ?? null,
+      // Canonical cross-surface document (v0.7.0, Milestone 25 §Stage 3):
+      // the same FeatureContextDocument the CLI / IDE / HTTP produce,
+      // so agents get the portable markdown + Recommended Files from the
+      // single canonical renderer — never a second presentation.
+      document: documentFromContext(c, input.task),
     };
   } catch (err) {
     return toError(err);

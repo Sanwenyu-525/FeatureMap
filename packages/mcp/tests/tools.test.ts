@@ -90,6 +90,13 @@ describe('get_feature_context', () => {
       feature: { id: string };
       sections: { code: unknown[]; apis: Array<{ name: string }>; instructions: unknown[] };
       evidenceSummary: unknown[];
+      document: {
+        formatVersion: number;
+        contextId: string;
+        artifact: { relativePath: string };
+        recommendedFiles: unknown[];
+        markdown: string;
+      };
     };
     expect(context.feature.id).toBe('feature:login');
     expect(context.sections.apis.map((a) => a.name)).toContain('POST /api/login');
@@ -97,6 +104,13 @@ describe('get_feature_context', () => {
     // Phase 5 builder projects scoped repository rules from the graph;
     // empty (not guessed) when no feature-scoped instruction exists.
     expect(Array.isArray(context.sections.instructions)).toBe(true);
+    // Canonical cross-surface document (v0.7.0 §Stage 3): the same
+    // FeatureContextDocument CLI / IDE / HTTP emit.
+    expect(context.document.formatVersion).toBe(1);
+    expect(context.document.contextId).toBe('login');
+    expect(context.document.artifact.relativePath).toBe('.featuremap/context/login.md');
+    expect(context.document.recommendedFiles.length).toBeGreaterThan(0);
+    expect(context.document.markdown).toContain('# Feature Context: Login');
   });
 
   it('honours include selection', async () => {
