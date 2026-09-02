@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "billing",
+      "name": "Billing",
+      "expected": [
+        { "target": { "type": "file", "path": "src/billing/billing-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/billing/billing.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/billing/invoice-service.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/billing/invoice-repository.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "symbol", "path": "src/billing/billing-handler.ts", "symbol": "billingHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/billing/billing.ts", "symbol": "run" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/billing/invoice-service.ts", "symbol": "createInvoice" }, "relation": "OWNS", "confidenceClass": "must-high" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/shared/logger.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "symbol", "path": "src/shared/logger.ts", "symbol": "log" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "file", "path": "src/shared/config.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "symbol", "path": "src/shared/config.ts", "symbol": "config" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "file", "path": "src/shared/http-client.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra"] },
+        { "target": { "type": "file", "path": "src/notification/notification.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/notification/notification-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/server.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["boundary"] }
+      ]
+    },
+    {
+      "id": "notification",
+      "name": "Notification",
+      "expected": [
+        { "target": { "type": "file", "path": "src/notification/notification-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/notification/notification.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/notification/notification-service.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/notification/notification-repository.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "symbol", "path": "src/notification/notification-handler.ts", "symbol": "notificationHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/notification/notification.ts", "symbol": "dispatch" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/notification/notification-service.ts", "symbol": "send" }, "relation": "OWNS", "confidenceClass": "must-high" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/shared/logger.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "file", "path": "src/shared/config.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "file", "path": "src/shared/http-client.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra"] },
+        { "target": { "type": "file", "path": "src/billing/billing.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/billing/billing-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/server.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["boundary"] }
+      ]
+    }
+  ],
+  "entities": [
+    { "target": { "type": "file", "path": "src/shared/logger.ts" }, "tags": ["shared-infra", "high-fanin"] },
+    { "target": { "type": "file", "path": "src/shared/config.ts" }, "tags": ["shared-infra", "high-fanin"] },
+    { "target": { "type": "file", "path": "src/shared/http-client.ts" }, "tags": ["shared-infra"] },
+    { "target": { "type": "file", "path": "src/server.ts" }, "tags": ["boundary"] }
+  ]
+}

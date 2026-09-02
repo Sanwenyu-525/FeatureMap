@@ -70,10 +70,17 @@ Input:
     'changes'
   >;
   maxItemsPerSection?: number;
+  budget?: number;
+  task?: string;
 }
 ```
 
 Output should be bounded and ranked by relevance.
+
+Since v0.7.0 (Milestone 25 §Stage 3) the response also carries
+`document` — the canonical `FeatureContextDocument` the CLI / IDE / HTTP
+produce, so agents get the portable markdown and Recommended Files from
+the single canonical renderer rather than a second presentation.
 
 ### `get_affected_features`
 

@@ -156,6 +156,38 @@ Allowed modes:
 
 Returns analyzer detection/run status and diagnostics.
 
+### `POST /context`
+
+Returns the canonical read-only `FeatureContextDocument` (v0.7.0,
+Milestone 25) — the same document the CLI / MCP / IDE produce, from the
+single canonical renderer (`docs/DEVELOPMENT_PLAN.md` Milestone 25).
+
+Request:
+
+```json
+{
+  "featureId": "authentication",
+  "task": "Add refresh token rotation"
+}
+```
+
+- `featureId` (required): feature name or id.
+- `task` (optional): free-text task. It lives **only** in the POST body
+  — never in the URL/query (free text, avoids URL logs). Task changes
+  ranking only, never the graph.
+
+Response: the `FeatureContextDocument`
+(`formatVersion`, `contextId`, `feature`, `task?`, `sections`,
+`recommendedFiles`, `budget`, `artifact`, `markdown`) with
+`Cache-Control: no-store` — the projection depends on the live graph
+and working-tree state, so browsers must not cache it.
+
+Errors:
+
+- `FEATURE_NOT_FOUND` (404) — unknown feature.
+- `INVALID_CONFIG` (400) — missing `featureId` or non-string `task`.
+- `CONTEXT_BUILD_FAILED` (500) — builder failure.
+
 ## 4. Error envelope
 
 ```ts
@@ -175,6 +207,7 @@ PROJECT_NOT_INITIALIZED
 SCAN_FAILED
 FEATURE_NOT_FOUND
 INVALID_CONFIG
+CONTEXT_BUILD_FAILED
 GIT_UNAVAILABLE
 ANALYZER_FAILED
 ```

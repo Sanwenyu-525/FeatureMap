@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { api, type Candidate, type FeatureDetail, type FeatureTimeline } from '../api/client';
 import { ErrorNotice, PageTitle, HEALTH_LABELS } from './shared';
 import FeatureFlowView from './FeatureFlowView';
+import ContextPanel from './ContextPanel';
 
 const STATUS_LABELS: Record<Candidate['status'], string> = {
   declared: '锚点',
@@ -89,7 +90,7 @@ export default function FeatureDetailPage() {
   const [feature, setFeature] = useState<FeatureDetail | null>(null);
   const [timeline, setTimeline] = useState<FeatureTimeline | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [view, setView] = useState<'flow' | 'lists' | 'changes'>('flow');
+  const [view, setView] = useState<'flow' | 'lists' | 'changes' | 'context'>('flow');
 
   useEffect(() => {
     setFeature(null);
@@ -161,7 +162,7 @@ export default function FeatureDetailPage() {
         </div>
       ) : null}
       <div className="mb-4 flex gap-2">
-        {(['flow', 'lists', 'changes'] as const).map((v) => (
+        {(['flow', 'lists', 'changes', 'context'] as const).map((v) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -169,11 +170,15 @@ export default function FeatureDetailPage() {
               view === v ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
             }`}
           >
-            {v === 'flow' ? '产品流视图' : v === 'lists' ? '工程视图' : '变更时间线'}
+            {v === 'flow' ? '产品流视图' : v === 'lists' ? '工程视图' : v === 'changes' ? '变更时间线' : 'AI Context'}
           </button>
         ))}
       </div>
-      {view === 'changes' ? <TimelineView timeline={timeline} /> : view === 'flow' ? (
+      {view === 'changes' ? (
+        <TimelineView timeline={timeline} />
+      ) : view === 'context' ? (
+        <ContextPanel featureId={feature.id} featureName={feature.name} />
+      ) : view === 'flow' ? (
         <FeatureFlowView feature={feature} />
       ) : (
         <>

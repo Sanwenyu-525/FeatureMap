@@ -1,0 +1,25 @@
+{
+  "overall": {
+    "precision": 0.7560975609756098,
+    "recall": 0.9841269841269841,
+    "truePositive": 62,
+    "falsePositive": 20,
+    "falseNegative": 1
+  },
+  "highConfidence": {
+    "displayed": 18,
+    "falsePositive": 0,
+    "falsePositiveRate": 0
+  },
+  "sharedInfrastructure": {
+    "total": 7,
+    "falsePromotions": 0,
+    "falsePromotionRate": 0
+  },
+  "ambiguity": {
+    "total": 0,
+    "wrongOwnership": 0,
+    "wrongOwnershipRate": 0
+  },
+  "failures": 21
+}
