@@ -263,3 +263,67 @@ describe('code intelligence RPC (v0.6.2)', () => {
     expect(after?.id).toBe('symbol:src/auth/login-handler.ts:loginHandler');
   });
 });
+
+describe('live impact RPC (v0.6.3)', () => {
+  let repo: string;
+  let impactService: ReturnType<typeof createIdeService>;
+  const tempDirs: string[] = [];
+
+  beforeAll(async () => {
+    // A real temp git repo (copy of fixture 01) so working-tree changes exist.
+    repo = mkdtempSync(join(tmpdir(), 'featuremap-ide-impact-'));
+    tempDirs.push(repo);
+    const { cpSync, writeFileSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    const fixture = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login');
+    cpSync(fixture, repo, { recursive: true, filter: (src) => !src.includes('.featuremap') });
+    const git = (...args: string[]): void => {
+      execFileSync('git', ['-C', repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { stdio: 'ignore' });
+    };
+    git('init', '-b', 'main', '-q');
+    git('add', '.');
+    git('commit', '-m', 'feat: init', '--quiet');
+    writeFileSync(join(repo, 'src/auth/login.ts'), "export function login() {\n  return 'v2';\n}\n", 'utf8');
+    impactService = createIdeService({ repoRoot: repo, dbPath: join(repo, '.featuremap', 'test.db') });
+  });
+
+  afterAll(() => {
+    impactService.close();
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('impact.current is unavailable before the first refresh', () => {
+    const current = impactService.handlers['impact.current']() as { available: boolean };
+    expect(current.available).toBe(false);
+  });
+
+  it('impact.refresh returns a save snapshot with affected features', async () => {
+    const result = (await impactService.handlers['impact.refresh']({
+      savedFiles: ['src/auth/login.ts'],
+      trigger: 'save',
+    })) as { snapshot: { generation: number; trigger: { type: string }; summary: { affectedFeatureCount: number }; affectedFeatures: Array<{ featureId: string; severity: string }> } };
+    expect(result.snapshot.generation).toBe(1);
+    expect(result.snapshot.trigger.type).toBe('save');
+    expect(result.snapshot.summary.affectedFeatureCount).toBe(result.snapshot.affectedFeatures.length);
+    expect(result.snapshot.affectedFeatures.length).toBeGreaterThan(0);
+  });
+
+  it('impact.current serves the cached snapshot and increments generation', async () => {
+    const first = impactService.handlers['impact.current']() as { available: boolean; snapshot?: { generation: number } };
+    expect(first.available).toBe(true);
+    await impactService.handlers['impact.refresh']({ trigger: 'manual' });
+    const second = impactService.handlers['impact.current']() as { available: boolean; snapshot?: { generation: number } };
+    expect(second.snapshot?.generation).toBe((first.snapshot?.generation ?? 0) + 1);
+  });
+
+  it('rejects refresh on an uninitialized repository', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'featuremap-ide-noinit-'));
+    try {
+      const bad = createIdeService({ repoRoot: empty });
+      await expect(bad.handlers['impact.refresh']({ trigger: 'manual' })).rejects.toThrow(/PROJECT_NOT_INITIALIZED/);
+      bad.close();
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});

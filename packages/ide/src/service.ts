@@ -19,7 +19,11 @@ import {
   getCodeIntelligence,
   getDocumentIntelligence,
   explainFeatureRelation,
+  createCurrentImpactStore,
+  refreshCurrentImpact,
+  getCurrentImpact,
   type CodeIntelligenceResult,
+  type CurrentImpactSnapshot,
   type DocumentSymbolFeature,
   type ExplainFeatureRelationResult,
   type RelatedFeaturesOptions,
@@ -129,6 +133,9 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
   const invalidateIndex = (): void => {
     index = undefined;
   };
+
+  // Live Change Impact store (v0.6.3): repo-scoped cached snapshot.
+  const impactStore = createCurrentImpactStore();
 
   const requireInitialized = (): void => {
     if (!existsSync(join(repoRoot, CONFIG_FILE_NAME))) {
@@ -382,6 +389,35 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       }
       return explainFeatureRelation(repoRoot, input.featureId, targetId, dbPath);
     },
+
+    /**
+     * impact.refresh — save-triggered orchestration (v0.6.3 plan §7.1):
+     * incremental scan → analyzeImpact(WORKING_TREE) → cached snapshot.
+     * The code-intelligence index is invalidated so Hover/CodeLens see
+     * the fresh graph (plan §26).
+     */
+    'impact.refresh': async (params): Promise<unknown> => {
+      requireInitialized();
+      const input = (params ?? {}) as { savedFiles?: string[]; trigger?: 'save' | 'manual' };
+      const savedFiles = Array.isArray(input.savedFiles)
+        ? input.savedFiles.filter((s): s is string => typeof s === 'string')
+        : [];
+      const trigger = input.trigger === 'manual' ? 'manual' : 'save';
+      try {
+        const result = await refreshCurrentImpact(repoRoot, { savedFiles, trigger, dbPath }, impactStore);
+        invalidateIndex();
+        return result;
+      } catch (err) {
+        throw new RpcError(
+          DomainErrorCode,
+          `IMPACT_REFRESH_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+
+    /** impact.current — cheap read of the last snapshot (plan §7.2), never triggers analysis. */
+    'impact.current': (): { available: boolean; snapshot?: CurrentImpactSnapshot } =>
+      getCurrentImpact(repoRoot, impactStore),
     },
     close: closeDb,
   };

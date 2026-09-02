@@ -12,3 +12,4 @@ export * from './review.js';
 export * from './git/index.js';
 export * from './timeline.js';
 export * from './code-intelligence/index.js';
+export * from './live-impact/index.js';
