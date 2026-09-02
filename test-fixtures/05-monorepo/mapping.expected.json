@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "login",
+      "name": "Login",
+      "expected": [
+        { "target": { "type": "file", "path": "apps/web/src/login/handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "packages/auth/src/login.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "packages/auth/src/auth-service.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "packages/auth/src/user-repository.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "symbol", "path": "apps/web/src/login/handler.ts", "symbol": "loginHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "packages/auth/src/login.ts", "symbol": "login" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "packages/auth/src/auth-service.ts", "symbol": "login" }, "relation": "OWNS", "confidenceClass": "must-high" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "apps/web/src/utils.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["same-name"] },
+        { "target": { "type": "symbol", "path": "apps/web/src/utils.ts", "symbol": "formatWebDate" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["same-name"] },
+        { "target": { "type": "file", "path": "packages/auth/src/utils.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["same-name"] },
+        { "target": { "type": "symbol", "path": "packages/auth/src/utils.ts", "symbol": "formatAuthDate" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["same-name"] }
+      ]
+    }
+  ],
+  "entities": [
+    { "target": { "type": "file", "path": "apps/web/src/utils.ts" }, "tags": ["same-name"] },
+    { "target": { "type": "file", "path": "packages/auth/src/utils.ts" }, "tags": ["same-name"] }
+  ]
+}

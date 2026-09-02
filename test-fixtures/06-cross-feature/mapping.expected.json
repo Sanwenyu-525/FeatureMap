@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "login",
+      "name": "Login",
+      "expected": [
+        { "target": { "type": "file", "path": "src/api/login-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/login.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/session-service.ts" }, "relation": "DEPENDS_ON", "confidenceClass": "may-suggest", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/services/user-repository.ts" }, "relation": "DEPENDS_ON", "confidenceClass": "may-suggest", "tags": ["cross-feature"] },
+        { "target": { "type": "symbol", "path": "src/api/login-handler.ts", "symbol": "loginHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/login.ts", "symbol": "login" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/session-service.ts", "symbol": "create" }, "relation": "OWNS", "confidenceClass": "must-high" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/api/logout-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/auth/logout.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "symbol", "path": "src/auth/session-service.ts", "symbol": "destroy" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "symbol", "path": "src/auth/logout.ts", "symbol": "logout" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] }
+      ]
+    },
+    {
+      "id": "logout",
+      "name": "Logout",
+      "expected": [
+        { "target": { "type": "file", "path": "src/api/logout-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/logout.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/session-service.ts" }, "relation": "DEPENDS_ON", "confidenceClass": "may-suggest", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/services/user-repository.ts" }, "relation": "DEPENDS_ON", "confidenceClass": "may-suggest", "tags": ["cross-feature"] },
+        { "target": { "type": "symbol", "path": "src/api/logout-handler.ts", "symbol": "logoutHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/logout.ts", "symbol": "logout" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/session-service.ts", "symbol": "destroy" }, "relation": "OWNS", "confidenceClass": "must-high" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/api/login-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "file", "path": "src/auth/login.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] },
+        { "target": { "type": "symbol", "path": "src/auth/session-service.ts", "symbol": "create" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["cross-feature"] }
+      ]
+    }
+  ],
+  "entities": [
+    { "target": { "type": "file", "path": "src/auth/session-service.ts" }, "tags": ["cross-feature", "boundary"] },
+    { "target": { "type": "file", "path": "src/services/user-repository.ts" }, "tags": ["cross-feature"] }
+  ]
+}

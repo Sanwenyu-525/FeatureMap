@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "login",
+      "name": "Login",
+      "expected": [
+        { "target": { "type": "file", "path": "src/api/login-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/api/auth.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/services/auth-service.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/services/user-repository.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "file", "path": "src/login/LoginPage.tsx" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "file", "path": "src/login/LoginForm.tsx" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "file", "path": "src/login/useLogin.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "symbol", "path": "src/api/login-handler.ts", "symbol": "loginHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/services/auth-service.ts", "symbol": "authenticate" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/services/user-repository.ts", "symbol": "findByEmail" }, "relation": "OWNS", "confidenceClass": "may-suggest" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/components/Button.tsx" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["generic-helper"] },
+        { "target": { "type": "file", "path": "src/components/PasswordInput.tsx" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["generic-helper"] },
+        { "target": { "type": "file", "path": "src/shared/logger.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "symbol", "path": "src/shared/logger.ts", "symbol": "logger" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] }
+      ]
+    }
+  ],
+  "entities": [
+    { "target": { "type": "file", "path": "src/shared/logger.ts" }, "tags": ["shared-infra", "high-fanin"] },
+    { "target": { "type": "file", "path": "src/components/Button.tsx" }, "tags": ["generic-helper"] }
+  ]
+}

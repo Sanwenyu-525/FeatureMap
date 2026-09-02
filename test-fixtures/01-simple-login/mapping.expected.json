@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "login",
+      "name": "Login",
+      "expected": [
+        { "target": { "type": "file", "path": "src/auth/login-handler.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/login.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/auth-service.ts" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "file", "path": "src/auth/user-repository.ts" }, "relation": "OWNS", "confidenceClass": "may-suggest" },
+        { "target": { "type": "symbol", "path": "src/auth/login-handler.ts", "symbol": "loginHandler" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/login.ts", "symbol": "login" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/auth-service.ts", "symbol": "login" }, "relation": "OWNS", "confidenceClass": "must-high" },
+        { "target": { "type": "symbol", "path": "src/auth/user-repository.ts", "symbol": "findByEmail" }, "relation": "OWNS", "confidenceClass": "may-suggest" }
+      ],
+      "notExpected": [
+        { "target": { "type": "file", "path": "src/shared/logger.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "symbol", "path": "src/shared/logger.ts", "symbol": "logger" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra", "high-fanin"] },
+        { "target": { "type": "file", "path": "src/shared/http-client.ts" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra"] },
+        { "target": { "type": "symbol", "path": "src/shared/http-client.ts", "symbol": "HttpClient" }, "relation": "OWNS", "confidenceClass": "must-not-high", "tags": ["shared-infra"] }
+      ]
+    }
+  ],
+  "entities": [
+    { "target": { "type": "file", "path": "src/shared/logger.ts" }, "tags": ["shared-infra", "high-fanin"] },
+    { "target": { "type": "file", "path": "src/shared/http-client.ts" }, "tags": ["shared-infra"] }
+  ]
+}
