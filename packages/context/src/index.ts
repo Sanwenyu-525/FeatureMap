@@ -17,3 +17,4 @@ export * from './context-ranker.js';
 export * from './context-budget.js';
 export * from './context-builder.js';
 export * from './context-renderer.js';
+export * from './context-document.js';
