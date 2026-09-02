@@ -21,6 +21,8 @@
       { "command": "featuremap.initializeAndScan", "title": "FeatureMap: Initialize & Scan" },
       { "command": "featuremap.openFeature", "title": "FeatureMap: Open Feature" },
       { "command": "featuremap.searchFeatures", "title": "FeatureMap: Search Features" },
+      { "command": "featuremap.showRelatedFeatures", "title": "FeatureMap: Show Related Features" },
+      { "command": "featuremap.explainRelation", "title": "FeatureMap: Explain Relation" },
       { "command": "featuremap.toggleGrouping", "title": "FeatureMap: Toggle Feature Grouping" },
       { "command": "featuremap.refresh", "title": "FeatureMap: Refresh" }
     ],

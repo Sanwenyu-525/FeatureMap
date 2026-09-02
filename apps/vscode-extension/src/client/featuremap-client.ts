@@ -53,6 +53,70 @@ export interface IdeFeatureDetail extends IdeFeature {
   candidates: unknown[];
 }
 
+/** Code Intelligence DTOs (v0.6.2). Line numbers are 1-based on the wire. */
+export interface IdeSymbolRef {
+  filePath: string;
+  name?: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface IdeResolvedSymbol {
+  id: string;
+  name: string;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+}
+
+export interface IdeRelatedFeature {
+  featureId: string;
+  name: string;
+  description?: string;
+  pattern: string;
+  relation: { type: 'OWNS' | 'DEPENDS_ON'; status: 'confirmed' | 'declared' | 'accepted' | 'suggested'; confidence: number };
+  evidence: { available: boolean; count: number };
+}
+
+export interface IdeRelatedFeaturesResult {
+  symbol: IdeResolvedSymbol;
+  features: IdeRelatedFeature[];
+}
+
+export interface IdeCodeIntelligence {
+  symbol: { id: string; name: string; filePath: string };
+  primaryFeature?: { id: string; name: string; relation: 'OWNS' | 'DEPENDS_ON'; confidence: number };
+  relatedFeatures: Array<{ id: string; name: string; relation: 'OWNS' | 'DEPENDS_ON'; confidence: number }>;
+  directDependencies: Array<{ symbolId?: string; name: string; filePath?: string }>;
+  tests: Array<{ path: string; symbolName?: string }>;
+  recentChange?: { commit?: string; date?: string; summary?: string };
+}
+
+export interface IdeDocumentSymbolFeature {
+  symbol: { id: string; name: string; startLine: number; endLine: number };
+  feature: { id: string; name: string };
+  relation: 'OWNS' | 'DEPENDS_ON';
+  confidence: number;
+  status: string;
+}
+
+export interface IdeExplainChainStep {
+  relationType: string;
+  sourceId: string;
+  targetId: string;
+  confidence: number;
+}
+
+export interface IdeExplainRelation {
+  featureId: string;
+  targetId: string;
+  targetType: 'file' | 'symbol';
+  relation: 'owns' | 'DEPENDS_ON';
+  status: string;
+  confidence: number;
+  chain: IdeExplainChainStep[];
+}
+
 export interface ClientTransport {
   stdin: Writable;
   stdout: Readable;

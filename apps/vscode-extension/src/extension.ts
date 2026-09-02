@@ -11,11 +11,17 @@ import { basename, join } from 'node:path';
 import {
   spawnFeatureMapService,
   type FeatureMapClient,
+  type IdeExplainRelation,
   type IdeFeature,
   type IdeFeatureDetail,
   type IdeProjectStatus,
+  type IdeRelatedFeaturesResult,
+  type IdeSymbolRef,
 } from './client/featuremap-client';
 import { FeatureTreeProvider } from './providers/feature-tree-provider';
+import { registerHoverProvider } from './providers/hover-provider';
+import { registerCodeLensProvider } from './providers/codelens-provider';
+import { resolveSymbolRef } from './providers/position-symbol';
 
 export function activate(context: vscode.ExtensionContext): void {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -168,6 +174,65 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.window.setStatusBarMessage(`FeatureMap: features ${label}`, 2000);
   }
 
+  async function showRelatedFeatures(symbolRef?: IdeSymbolRef): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    let ref = symbolRef;
+    if (!ref) {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+      ref = await resolveSymbolRef(editor.document, editor.selection.active);
+    }
+    try {
+      const result = await c.request<IdeRelatedFeaturesResult | null>('code.relatedFeatures', { symbol: ref });
+      if (!result || result.features.length === 0) {
+        void vscode.window.showInformationMessage('FeatureMap: no related features for this symbol.');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        result.features.map((feature) => ({
+          label: feature.name,
+          description: `${feature.relation.type} · ${Math.round(feature.relation.confidence * 100)}%`,
+          detail: `${feature.relation.status} — ${feature.pattern}`,
+          feature,
+        })),
+        { placeHolder: `Related features of ${result.symbol.name}` },
+      );
+      if (pick) await openFeature(pick.feature.featureId);
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function explainRelation(featureId?: string, symbolId?: string): Promise<void> {
+    const c = await connect();
+    if (!c || !featureId || !symbolId) return;
+    try {
+      const exp = await c.request<IdeExplainRelation>('code.explainRelation', {
+        featureId,
+        target: { id: symbolId },
+      });
+      const items = [
+        {
+          label: `$(symbol-method) ${exp.targetId}`,
+          description: `${exp.relation.toUpperCase()} · ${Math.round(exp.confidence * 100)}%`,
+          detail: `status: ${exp.status}`,
+        },
+        ...exp.chain.slice(0, 10).map((step, i) => ({
+          label: `${i + 1}. ${step.sourceId}`,
+          description: step.relationType,
+          detail: `→ ${step.targetId} (${Math.round(step.confidence * 100)}%)`,
+        })),
+      ];
+      await vscode.window.showQuickPick(items, {
+        placeHolder: `Why ${symbolId} belongs to ${featureId}`,
+        matchOnDescription: true,
+      });
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   const treeProvider = new FeatureTreeProvider(getClient);
   const treeView = vscode.window.createTreeView('featuremap.features', { treeDataProvider: treeProvider });
   context.subscriptions.push(treeView);
@@ -181,12 +246,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('featuremap.openFeature', (featureId?: string) => openFeature(featureId)),
     vscode.commands.registerCommand('featuremap.searchFeatures', searchFeatures),
     vscode.commands.registerCommand('featuremap.toggleGrouping', toggleGrouping),
+    vscode.commands.registerCommand('featuremap.showRelatedFeatures', (featureId?: string, symbol?: IdeSymbolRef) => {
+      void showRelatedFeatures(symbol ?? undefined);
+    }),
+    vscode.commands.registerCommand('featuremap.explainRelation', (featureId?: string, symbolId?: string) =>
+      explainRelation(featureId, symbolId),
+    ),
     vscode.commands.registerCommand('featuremap.refresh', () => {
       void (async () => {
         await treeProvider.load();
         await refreshStatus();
       })();
     }),
+    // Code intelligence providers (v0.6.2): Hover + CodeLens.
+    registerHoverProvider(getClient),
+    registerCodeLensProvider(getClient),
     // The service is owned by the extension (ADR-0008 §3): kill on deactivate.
     { dispose: () => client?.dispose() },
   );
