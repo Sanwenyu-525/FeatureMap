@@ -200,20 +200,34 @@ Do not destroy analyzer evidence when an override exists.
 
 ## 8. Context package
 
-MCP and CLI should consume a bounded derived model:
+MCP and CLI consume a bounded derived model — the FeatureContext
+(Phase 5 / `packages/context`, see
+[docs/context/FEATURE_CONTEXT_SCHEMA.md](context/FEATURE_CONTEXT_SCHEMA.md)):
 
 ```ts
 interface FeatureContext {
+  schemaVersion: '1';
   feature: Feature;
-  flow: FlowNode[];
-  assets: CodeAsset[];
-  tests: CodeAsset[];
-  documents: DocumentReference[];
-  instructions: Instruction[];
-  recentChanges: GitChange[];
-  evidenceSummary: EvidenceSummary[];
+  purpose?: string;
+  summary?: string;
+  entryPoints: CodeEntry[];      // endpoint / cli_command assets
+  coreCode: CodeEntry[];         // owns relations + data entities
+  dependencies: CodeEntry[];     // DEPENDS_ON relations
+  dependents: CodeEntry[];       // reverse IMPORTS of owned files
+  tests: CodeEntry[];
+  policies: Instruction[];       // feature-scoped repository rules
+  constraints: Instruction[];    // level = required only
+  recentChanges: RecentChange[]; // commits touching owned paths
+  changeRisks: RiskSignal[];     // deterministic bands from recent changes
+  evidence: ContextEvidence[];
+  budget: { requested; estimatedTotal; allocation; dropped; overBudget; exhaustedSections };
+  task?: { text; terms; boostsApplied };
 }
 ```
 
-This object is a consumer model, not the primary storage model.
+This object is a consumer model, not the primary storage model. It is a
+**read-only projection** of the evidence-backed graph: the resolver
+never writes rows, so there is exactly one source of truth and the
+context can never drift from it. Ranking and budgeting rules are
+documented in [docs/context/CONTEXT_RANKING.md](context/CONTEXT_RANKING.md).
 

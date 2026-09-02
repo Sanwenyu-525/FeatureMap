@@ -9,10 +9,15 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runScan } from '@featuremap/pipeline';
 import {
+  explainRelation,
   getAffectedFeatures,
   getApplicableInstructions,
+  getChangeImpact,
   getFeature,
   getFeatureContext,
+  getFeatureDependencies,
+  getRelatedCode,
+  getRelatedTests,
   listFeatures,
   type ToolContext,
 } from '../src/index.js';
@@ -89,8 +94,9 @@ describe('get_feature_context', () => {
     expect(context.feature.id).toBe('feature:login');
     expect(context.sections.apis.map((a) => a.name)).toContain('POST /api/login');
     expect(context.sections.code.length).toBeLessThanOrEqual(5);
-    // No invented rules: instruction extraction is not implemented yet.
-    expect(context.sections.instructions).toEqual([]);
+    // Phase 5 builder projects scoped repository rules from the graph;
+    // empty (not guessed) when no feature-scoped instruction exists.
+    expect(Array.isArray(context.sections.instructions)).toBe(true);
   });
 
   it('honours include selection', async () => {
@@ -122,5 +128,56 @@ describe('get_applicable_instructions', () => {
   it('returns empty list until instruction extraction exists (no invention)', async () => {
     const instructions = await getApplicableInstructions(ctx, { featureId: 'feature:login' });
     expect(instructions).toEqual([]);
+  });
+});
+
+describe('Phase 5 adapter tools (get_related_code / get_feature_dependencies / get_related_tests / get_change_impact / explain_relation)', () => {
+  it('get_related_code returns ranked code with IDs and evidence', async () => {
+    const result = (await getRelatedCode(ctx, { featureId: 'feature:login' })) as {
+      code: Array<{ id: string; evidence: unknown[] }>;
+    };
+    expect(result.code.length).toBeGreaterThan(0);
+    for (const entry of result.code) {
+      expect(typeof entry.id).toBe('string');
+      expect(Array.isArray(entry.evidence)).toBe(true);
+    }
+  });
+
+  it('get_feature_dependencies keeps deps separate from dependents', async () => {
+    const result = (await getFeatureDependencies(ctx, { featureId: 'feature:login' })) as {
+      dependencies: unknown[];
+      dependents: unknown[];
+    };
+    expect(Array.isArray(result.dependencies)).toBe(true);
+    expect(Array.isArray(result.dependents)).toBe(true);
+  });
+
+  it('get_related_tests returns an array (possibly empty) without inventing tests', async () => {
+    const result = (await getRelatedTests(ctx, { featureId: 'feature:login' })) as { tests: unknown[] };
+    expect(Array.isArray(result.tests)).toBe(true);
+  });
+
+  it('get_change_impact returns the impact envelope', async () => {
+    const result = (await getChangeImpact(ctx)) as {
+      affectedFeatures: unknown[];
+      sharedInfrastructure: unknown[];
+      recommendedTests: unknown[];
+    };
+    expect(Array.isArray(result.affectedFeatures)).toBe(true);
+    expect(Array.isArray(result.sharedInfrastructure)).toBe(true);
+    expect(Array.isArray(result.recommendedTests)).toBe(true);
+  });
+
+  it('explain_relation returns a chain or a structured error, never a crash', async () => {
+    const ok = (await explainRelation(ctx, { featureId: 'feature:login', target: 'src/auth/login.js' })) as {
+      chain?: unknown[];
+      evidenceRows?: unknown[];
+      error?: { code: string };
+    };
+    expect(ok.error ?? ok.chain ?? ok.evidenceRows).toBeDefined();
+    const missing = (await explainRelation(ctx, { featureId: 'feature:login', target: 'does/not/exist.ts' })) as {
+      error?: { code: string };
+    };
+    expect(missing.error).toBeDefined();
   });
 });

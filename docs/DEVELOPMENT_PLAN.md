@@ -500,6 +500,54 @@ broken mapping; the webhook signature rejects tampered bodies; the
 server responds 401 to unsigned webhooks and 200 on `/health`.
 Multi-repo checkout management is deferred.
 
+## Milestone 18 — Phase 5 AI Context Layer (v0.5.0)
+
+Status: complete (packages/context). FeatureContext is a **read-only
+projection** of the Feature Knowledge Graph, ranked by deterministic
+tiers, bounded by an importance-weighted token budget, and rendered in
+markdown / JSON / agent formats. CLI `featuremap context <feature>`
+supports `--format`, `--budget` (4000/8000/16000), `--include-history`,
+`--include-tests`, `--depth` (default 3) and `--task`. Task-aware
+ranking is rule-based term boosting only — it never mutates the graph.
+
+Goal: give coding agents low-noise, evidence-backed context per feature
+or per task, without copying the repository and without making the LLM
+the authority on feature↔code mapping.
+
+Implement:
+
+- `FeatureContext` model with schemaVersion (`packages/context/src/types.ts`)
+- resolver → ranker (tiers 1–4) → budget (core 40 / deps 20 / tests 15 /
+  policies 10 / changes 10 / other 5, with dynamic redistribution and an
+  anchor guarantee) → render
+- renderers: markdown (terminal), json (stable, machine), agent
+  (dense, fact-vs-inference marked, "Recommended Files To Inspect")
+- public API `buildFeatureContext(repoRoot, featureNameOrId, options)`
+  shared by CLI, MCP, and future HTTP/IDE consumers
+- MCP adapter tools: `get_related_code`, `get_feature_dependencies`,
+  `get_change_impact`, `get_related_tests`, `explain_relation`;
+  `get_feature_context` now delegates to the builder
+- six quality fixtures (S1–S6) with 21 ranking/budget/task-aware/JSON
+  tests plus MCP adapter tests
+
+CLI:
+
+```bash
+featuremap context login
+featuremap context login --format agent
+featuremap context login --format json --budget 4000
+featuremap context login --task "fix session expiration"
+```
+
+Exit criteria:
+
+`context` output is ranked (accepted > suggested, anchors first,
+rejected absent, shared infra down-weighted), respects the token budget
+(core tier-1 code survives at 4000/8000/16000), changes ranking — never
+the graph — for a task, carries evidence on every entry, and the JSON
+schema is stable/versioned. Verified end-to-end on
+`test-fixtures/06-cross-feature`.
+
 ## Phase 3 acceptance scenario
 
 Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,

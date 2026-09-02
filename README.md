@@ -5,9 +5,13 @@
 FeatureMap is built for AI-heavy software development. As coding agents produce code faster, repositories become harder to understand at the product level. FeatureMap answers questions such as:
 
 - What code implements **Login**?
+
 - Which APIs, tests, data entities, and documents belong to that feature?
+
 - Which `AGENTS.md` / `CLAUDE.md` rules apply before changing it?
+
 - What features are affected by my current Git diff?
+
 - What context should a coding agent load before modifying this feature?
 
 ## MVP Product Principle
@@ -37,12 +41,19 @@ The product should feel closer to **Swagger for product features**, with a local
 The MVP targets JavaScript / TypeScript web applications, especially:
 
 - React
+
 - Next.js
+
 - Vue
+
 - Express
+
 - NestJS
+
 - Prisma
+
 - REST APIs
+
 - Git repositories
 
 Unsupported stacks must degrade gracefully to file, Git, document, and semantic analysis instead of failing completely.
@@ -50,26 +61,37 @@ Unsupported stacks must degrade gracefully to file, Git, document, and semantic 
 ### Core MVP capabilities
 
 1. **Repository scanning**
+
    - Detect project structure and technologies.
+
    - Parse files, symbols, imports, routes, docs, Git history, and current diff.
 
 2. **Feature discovery**
+
    - Group repository evidence into product features.
+
    - Assign a feature name, description, pattern, confidence, and health status.
 
 3. **Feature → implementation mapping**
+
    - Map a feature to frontend, backend, API, data, tests, docs, and instructions.
 
 4. **Change impact analysis**
+
    - Map changed files / symbols to affected features.
 
 5. **Local Web UI**
+
    - Overview
+
    - Features
+
    - Feature Detail
+
    - Changes
 
 6. **MCP integration**
+
    - Expose feature context to coding agents.
 
 ## Non-goals for MVP
@@ -77,38 +99,48 @@ Unsupported stacks must degrade gracefully to file, Git, document, and semantic 
 The MVP does **not** include:
 
 - SaaS collaboration
+
 - GitHub App / GitLab App
+
 - Jira / Linear integration
+
 - Enterprise RBAC
+
 - Multi-repository product graphs
+
 - Runtime tracing
+
 - Full static call graph for every language
+
 - VS Code / JetBrains plugins
+
 - Neo4j
+
 - AI autonomous code modification
+
 - Support for every programming language
 
 ## Recommended Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 24 LTS |
-| Language | TypeScript |
-| Workspace | pnpm workspaces |
-| CLI | Commander + execa |
-| Local server | Fastify |
-| Web | React + Vite |
-| Diagram UI | `@xyflow/react` |
-| Styling | Tailwind CSS + shadcn/ui |
-| Local database | SQLite |
-| Database access | Drizzle ORM |
-| TypeScript analysis | TypeScript Compiler API |
-| Cross-language parser | Tree-sitter |
-| Vue analysis | `@vue/compiler-sfc` |
-| Markdown analysis | remark / mdast |
-| Git | native `git` CLI via execa |
-| Tests | Vitest + Playwright |
-| Agent integration | MCP TypeScript SDK |
+| Layer                 | Technology                 |
+| --------------------- | -------------------------- |
+| Runtime               | Node.js 24 LTS             |
+| Language              | TypeScript                 |
+| Workspace             | pnpm workspaces            |
+| CLI                   | Commander + execa          |
+| Local server          | Fastify                    |
+| Web                   | React + Vite               |
+| Diagram UI            | `@xyflow/react`            |
+| Styling               | Tailwind CSS + shadcn/ui   |
+| Local database        | SQLite                     |
+| Database access       | Drizzle ORM                |
+| TypeScript analysis   | TypeScript Compiler API    |
+| Cross-language parser | Tree-sitter                |
+| Vue analysis          | `@vue/compiler-sfc`        |
+| Markdown analysis     | remark / mdast             |
+| Git                   | native `git` CLI via execa |
+| Tests                 | Vitest + Playwright        |
+| Agent integration     | MCP TypeScript SDK         |
 
 ## Repository Layout
 
@@ -122,6 +154,7 @@ featuremap/
 │   ├── scanner/
 │   ├── analyzer/
 │   ├── db/
+│   ├── context/
 │   ├── server/
 │   ├── llm/
 │   ├── mcp/
@@ -149,6 +182,10 @@ featuremap accept login src/auth/auth-service.ts:login   # 确认候选
 featuremap reject login src/shared/logger.ts             # 拒绝候选
 featuremap explain login findByEmail                     # 解释候选的证据链
 featuremap inspect src/auth/login.ts                     # 查看文件图邻域
+featuremap context login                                 # 功能 AI 上下文（markdown）
+featuremap context login --format agent                  # agent 专用密集上下文
+featuremap context login --format json --budget 4000     # 机器接口 + token 预算
+featuremap context login --task "fix session expiration" # task-aware 排序
 featuremap dev
 featuremap impact
 featuremap feature login
@@ -213,14 +250,27 @@ This boundary is the most important architectural rule in the project.
 All MVP milestones are implemented on the `develop` branch
 (see [Development plan](docs/DEVELOPMENT_PLAN.md) for per-milestone details):
 
-| Milestone | Scope |
-|---|---|
-| M0 Repository bootstrap | pnpm workspace, core domain model, SQLite/Drizzle, CLI shell |
-| M1 Repository Intelligence | scanner, analyzer platform, deterministic analyzers, evidence store |
-| M2 Feature Discovery | deterministic clustering, pattern classification, explainable health |
-| M3 Local Web UI | Fastify API + React UI, product-flow visualization, Playwright E2E |
-| M4 Change Impact | evidence-backed impact traversal, documentation-drift warnings |
-| M5 MCP | five bounded context tools over stdio |
+| Milestone                  | Scope                                                                |
+| -------------------------- | -------------------------------------------------------------------- |
+| M0 Repository bootstrap    | pnpm workspace, core domain model, SQLite/Drizzle, CLI shell         |
+| M1 Repository Intelligence | scanner, analyzer platform, deterministic analyzers, evidence store  |
+| M2 Feature Discovery       | deterministic clustering, pattern classification, explainable health |
+| M3 Local Web UI            | Fastify API + React UI, product-flow visualization, Playwright E2E   |
+| M4 Change Impact           | evidence-backed impact traversal, documentation-drift warnings       |
+| M5 MCP                     | five bounded context tools over stdio                                |
+
+Phase 5 (**AI Context Layer**) is implemented on the `develop` branch:
+`featuremap context <feature>` projects the Knowledge Graph into a
+ranked, budget-aware, evidence-backed context for coding agents
+(markdown / JSON / agent; token budgets 4000/8000/16000; task-aware
+ranking). The MCP server now exposes `get_feature_context`,
+`get_related_code`, `get_feature_dependencies`, `get_change_impact`,
+`get_related_tests` and `explain_relation` as thin adapters over the
+same `@featuremap/context` API. See
+[docs/context/FEATURE_CONTEXT_SCHEMA.md](docs/context/FEATURE_CONTEXT_SCHEMA.md),
+[docs/context/CONTEXT_RANKING.md](docs/context/CONTEXT_RANKING.md),
+[docs/context/MCP.md](docs/context/MCP.md) and the
+[acceptance checklist](docs/context/phase5-acceptance-checklist.md).
 
 Feature discovery in the MVP is fully deterministic (see
 [ADR-0002](docs/ADR/0002-deterministic-feature-discovery.md)); LLM
@@ -229,16 +279,27 @@ semantic naming is a future optional enhancement, not a dependency.
 ## Documentation
 
 - [MVP specification](docs/MVP_SPEC.md)
+
 - [Architecture](docs/ARCHITECTURE.md)
+
 - [Data model](docs/DATA_MODEL.md)
+
 - [Analyzer and plugin specification](docs/ANALYZER_PLUGIN_SPEC.md)
+
 - [Feature visualization grammar](docs/FEATURE_VISUALIZATION.md)
+
 - [Development plan](docs/DEVELOPMENT_PLAN.md)
+
 - [Testing strategy](docs/TESTING_STRATEGY.md)
+
 - [Local API specification](docs/API_SPEC.md)
+
 - [MCP specification](docs/MCP_SPEC.md)
+
 - [Security and privacy](SECURITY.md)
+
 - [ADR-0001: Local-first TypeScript architecture](docs/ADR/0001-local-first-typescript.md)
+
 - [ADR-0002: Deterministic feature discovery](docs/ADR/0002-deterministic-feature-discovery.md)
 
 ## Success Criteria
