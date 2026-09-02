@@ -169,9 +169,22 @@ interface SymbolInfo {
   className?: string;
   /** True when this declaration is the file's default export. */
   isDefaultExport?: boolean;
+  /** 1-based declaration span; consumed by changed-symbol extraction and IDE navigation. */
+  startLine?: number;
+  endLine?: number;
 }
 
 type Evidence = EvidenceInput;
+
+/** 1-based start line of a node's declaration span in `sourceFile`. */
+function startLineOf(node: ts.Node, sourceFile: ts.SourceFile): number {
+  return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+}
+
+/** 1-based end line of a node's declaration span in `sourceFile`. */
+function endLineOf(node: ts.Node, sourceFile: ts.SourceFile): number {
+  return sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+}
 
 /** Extract top-level symbols of one source file, incl. class methods. */
 function extractSymbols(sourceFile: ts.SourceFile): SymbolInfo[] {
@@ -183,6 +196,8 @@ function extractSymbols(sourceFile: ts.SourceFile): SymbolInfo[] {
         kind: 'function',
         isExported: hasExport(node),
         isDefaultExport: hasDefaultModifier(node),
+        startLine: startLineOf(node, sourceFile),
+        endLine: endLineOf(node, sourceFile),
       });
     } else if (ts.isClassDeclaration(node) && node.name) {
       symbols.push({
@@ -190,6 +205,8 @@ function extractSymbols(sourceFile: ts.SourceFile): SymbolInfo[] {
         kind: 'class',
         isExported: hasExport(node),
         isDefaultExport: hasDefaultModifier(node),
+        startLine: startLineOf(node, sourceFile),
+        endLine: endLineOf(node, sourceFile),
       });
       for (const member of node.members) {
         if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
@@ -198,6 +215,8 @@ function extractSymbols(sourceFile: ts.SourceFile): SymbolInfo[] {
             kind: 'method',
             isExported: false,
             className: node.name.text,
+            startLine: startLineOf(member, sourceFile),
+            endLine: endLineOf(member, sourceFile),
           });
         }
       }
@@ -209,6 +228,8 @@ function extractSymbols(sourceFile: ts.SourceFile): SymbolInfo[] {
             name: decl.name.text,
             kind: 'const',
             isExported: true,
+            startLine: startLineOf(decl, sourceFile),
+            endLine: endLineOf(decl, sourceFile),
           });
         }
       }
@@ -529,7 +550,7 @@ export const typescriptAnalyzer: AnalyzerPlugin = {
           path: filePath,
           name: sym.name,
           language: tsx ? 'TypeScript' : 'JavaScript',
-          metadata: { kind: sym.kind, exported: sym.isExported },
+          metadata: { kind: sym.kind, exported: sym.isExported, startLine: sym.startLine, endLine: sym.endLine },
         };
         result.assets.push(asset);
         if (sym.isExported) {

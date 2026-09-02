@@ -9,11 +9,17 @@ Goal: establish architecture and developer workflow.
 Deliverables:
 
 - pnpm workspace
+
 - TypeScript configs
+
 - lint/typecheck/test setup
+
 - package boundaries
+
 - SQLite/Drizzle bootstrap
+
 - CLI shell
+
 - fixture repository strategy
 
 Exit criteria:
@@ -35,14 +41,23 @@ Goal: generate deterministic repository evidence.
 Implement:
 
 - repository root detection
+
 - ignore rules
+
 - file inventory
+
 - file hashing/cache
+
 - Git branch/base detection
+
 - Git diff and commit metadata
+
 - TypeScript symbol/import extraction
+
 - Markdown/document discovery
+
 - NestJS/Express route extraction
+
 - Prisma model extraction
 
 CLI:
@@ -65,11 +80,17 @@ Goal: convert evidence into useful feature groups.
 Implement:
 
 - feature candidate clustering
+
 - semantic feature naming
+
 - feature grouping
+
 - pattern classification
+
 - confidence model
+
 - feature health derivation
+
 - document/instruction mapping
 
 CLI:
@@ -98,10 +119,15 @@ Implement pages:
 Implement:
 
 - Fastify local API
+
 - React/Vite app
+
 - Feature flow visualization
+
 - evidence "Why?" view
+
 - health states
+
 - branch impact view
 
 CLI:
@@ -123,10 +149,15 @@ Goal: make FeatureMap useful in everyday coding flow.
 Implement:
 
 - diff → changed file mapping
+
 - changed symbol extraction when available
+
 - feature impact traversal
+
 - confidence ranking
+
 - relevant tests/docs/rules
+
 - potential documentation drift warnings
 
 CLI:
@@ -172,8 +203,11 @@ Goal: answer "how is the code related?" at symbol level. See ADR-0003.
 Implement:
 
 - `CONTAINS` edges (file→symbol, class→method)
+
 - `CALLS` edges (resolved call expressions, symbol→symbol)
+
 - React component usage edges (JSX → imported component symbol)
+
 - `featuremap inspect <file>` — exports, imports, calls, called-by, references
 
 Exit criteria:
@@ -186,10 +220,9 @@ neighborhood with evidence for every edge.
 Status: complete. `FeatureAnchor` type in core; declared anchors via
 `featuremap.yaml` `features.anchors`; anchor-driven expansion
 (packages/pipeline/src/candidates.ts) with depth ≤ 3, distance decay,
-fan-in penalty, owns/DEPENDS_ON separation and explainable evidence
+fan-in penalty, owns/DEPENDS\_ON separation and explainable evidence
 chains; candidates persisted as declared/suggested in
-`feature_candidates` with verdict-preserving rescans; `featuremap scan
-<featureId>` prints ranked candidates. Known calibration item: the
+`feature_candidates` with verdict-preserving rescans; `featuremap scan <featureId>` prints ranked candidates. Known calibration item: the
 fan-in penalty does not bind at single-feature fixture scale — it is
 quantified by the shared-infrastructure fixtures (04–06) of the
 Quality Gate suite.
@@ -200,10 +233,14 @@ Implement:
 
 - `FeatureAnchor` type (file / symbol / route / component) plus manual
   anchor declaration for non-endpoint features
+
 - graph traversal from anchors (depth ≤ 3)
+
 - rule-based scoring: anchor bonus, direct call/import/component usage,
   distance decay, fan-in penalty for shared infrastructure
+
 - `owns` vs `DEPENDS_ON` separation (ADR-0003 §3)
+
 - candidate relations persisted as `suggested`
 
 CLI:
@@ -220,7 +257,7 @@ Fixture repos produce scored candidates where shared infrastructure
 ## Milestone 8 — Review Workflow (v0.2.3) — ✅ Complete
 
 Status: complete. `featuremap accept|reject <featureId> <target>`
-(packages/pipeline/src/review.ts) with precise error envelopes;
+(packages/pipeline/src/review\.ts) with precise error envelopes;
 `featuremap explain` renders the full evidence chain behind a score;
 Suggestions panel with accept/reject in the Feature Detail page
 backed by `POST /api/features/:id/candidates/verdict`; verdicts
@@ -236,10 +273,14 @@ Implement:
 
 - relation status state machine: declared / suggested / accepted /
   rejected (ADR-0003 §4)
+
 - `featuremap accept|reject <featureId> <target>`
+
 - `featuremap explain <featureId> <target>` — evidence chain with
   confidence
+
 - Suggestions panel in the Feature Detail page (accept/reject from UI)
+
 - rejected relations stay suppressed across rescans unless their
   evidence chain changes
 
@@ -269,7 +310,9 @@ Goal: make rescans fast enough for daily use.
 Implement:
 
 - graph cache keyed by file hash (extends existing scanner hash cache)
+
 - changed-file detection with partial graph rebuild
+
 - ignore/generated-file rules feeding both scanner and graph
 
 Exit criteria:
@@ -287,11 +330,14 @@ Implement:
 
 - unified change source model: working-tree / branch-diff /
   commit-range (single abstraction for CLI, API, MCP)
+
 - diff hunk collection on demand via native git CLI — hunk headers
   and line ranges only, no diff content persisted (AGENTS.md §13)
+
 - changed-symbol extraction: hunk line ranges ∩ symbol line spans,
   confidence 1.0; marked approximate when the range tip is not HEAD
   or the scan is stale
+
 - configurable git log window (`git.logLimit`, default 200)
 
 CLI:
@@ -315,6 +361,7 @@ Implement:
 
 - `featuremap impact [<range>]` — no argument keeps today's
   working-tree + branch-diff behavior
+
 - commit-range → changed symbols → feature traversal over
   `owns`/`DEPENDS_ON` relations (evidence-backed only, AGENTS.md §9)
 
@@ -339,9 +386,11 @@ Implement:
 
 - severity bands HIGH / MEDIUM / LOW (ADR-0004 §3) — rule-based,
   reasons attached, no opaque percentages (AGENTS.md §7)
+
 - shared-infrastructure isolation: fan-in ≥ 3 features → separate
   "Shared Infrastructure" section, never attributed as feature impact
   (ADR-0004 §4)
+
 - below-threshold evidence surfaced as explicit uncertainty
 
 Exit criteria:
@@ -359,6 +408,7 @@ Implement:
 - "Recommended tests" section in impact output: ✓ (associated with a
   HIGH/MEDIUM affected feature) and ? (transitive/shared) statuses
   (ADR-0004 §5)
+
 - sourced from the existing test-import → feature-closure
   association; labeled as recommendations, not coverage claims
 
@@ -375,8 +425,10 @@ Implement:
 
 - per-feature history derived at query time (ADR-0004 §6): commits,
   contributors, churn, change kinds (feat/fix prefix)
+
 - Changes tab in the Feature Detail page (Overview / Code /
   Dependencies / Changes / Tests)
+
 - `GET /api/features/:id/changes` endpoint
 
 Exit criteria:
@@ -396,16 +448,20 @@ Implement:
 
 - `featuremap pr [<range>] [--json]` — same change-source abstraction
   as impact (`main..HEAD`, `HEAD`, or working tree + branch diff)
+
 - risk band HIGH/MEDIUM/LOW with an explainable rule table (direct
   core change, public API/route/CLI entry, shared dependency, database
   schema, unchanged related tests, many features) — bands, never an
   opaque percentage (ADR-0005 §2)
+
 - test coverage: each recommended test marked changed (✓) or
   "potential missing coverage" (⚠), never "tests missing" (ADR-0005 §3)
+
 - mapping drift: `relation_broken` (accepted/declared file deleted or
   renamed) and `new_candidate` (changed symbol in an owned file not yet
   confirmed) — deterministic, detect → suggest, never auto-create
   (ADR-0005 §4)
+
 - `analyzeImpact` returns an additive `changedSymbols` field
 
 CLI:
@@ -435,14 +491,18 @@ Implement:
 - `packages/scm`: `SCMProvider` (check-run surface) + `GitHubProvider`
   (native-fetch Checks API client, injectable baseUrl/fetchImpl) +
   `InMemoryProvider` test double
+
 - `renderPrCheck(PrReport)` — pure report → check payload
   (`success` / `neutral`; `failure` only when the analysis itself
   fails); body from normalized report data only (AGENTS.md §13)
+
 - persistent check by name on the head commit — create-or-update,
   no per-push comments (ADR-0006 §3)
+
 - `runGitHubCheck(repoRoot, opts)` — scan → report → render → sync
-- `featuremap gh check [--base] [--head] [--owner] [--repo]
-  [--dry-run] [--json] [--skip-scan]`
+
+- `featuremap gh check [--base] [--head] [--owner] [--repo] [--dry-run] [--json] [--skip-scan]`
+
 - `apps/github-action` — action.yml + bundled thin shell over the
   runner (callers check out with `fetch-depth: 0`)
 
@@ -472,15 +532,18 @@ checks, and rare review comments (ADR-0007).
 
 Implement:
 
-- `packages/scm` App auth: `createAppJwt` (RS256, 10-min), 
+- `packages/scm` App auth: `createAppJwt` (RS256, 10-min),
   `getInstallationToken`, `verifyWebhookSignature` (HMAC-SHA256, raw
   body, constant-time)
+
 - `GitHubRestClient` becomes token-agnostic (tokenProvider) and gains
   the comment surface; `GitHubAppProvider` authenticates as an
   installation with token caching (ADR-0007 §2)
+
 - `handleWebhook` — parse `pull_request`, run the check, and post/update
   ONE comment per PR only when the conclusion is `neutral` (HIGH risk
   or broken mapping), found by marker (phase plan §10)
+
 - `apps/github-app` — Fastify webhook server (raw-body HMAC verify,
   installation id from payload, single-repo shape)
 
@@ -517,16 +580,21 @@ the authority on feature↔code mapping.
 Implement:
 
 - `FeatureContext` model with schemaVersion (`packages/context/src/types.ts`)
+
 - resolver → ranker (tiers 1–4) → budget (core 40 / deps 20 / tests 15 /
   policies 10 / changes 10 / other 5, with dynamic redistribution and an
   anchor guarantee) → render
+
 - renderers: markdown (terminal), json (stable, machine), agent
   (dense, fact-vs-inference marked, "Recommended Files To Inspect")
+
 - public API `buildFeatureContext(repoRoot, featureNameOrId, options)`
   shared by CLI, MCP, and future HTTP/IDE consumers
+
 - MCP adapter tools: `get_related_code`, `get_feature_dependencies`,
   `get_change_impact`, `get_related_tests`, `explain_relation`;
   `get_feature_context` now delegates to the builder
+
 - six quality fixtures (S1–S6) with 21 ranking/budget/task-aware/JSON
   tests plus MCP adapter tests
 
@@ -547,6 +615,168 @@ rejected absent, shared infra down-weighted), respects the token budget
 the graph — for a task, carries evidence on every entry, and the JSON
 schema is stable/versioned. Verified end-to-end on
 `test-fixtures/06-cross-feature`.
+
+## Phase 6 — IDE Intelligence (v0.6.0–v0.6.5, Milestones 19–24)
+
+Phase 6 puts the Feature Knowledge Graph into the developer's main
+editing path. The developer does not run the CLI — the editor surfaces
+Feature information automatically (which features own the code under
+the cursor, why, what a change affects, which tests are relevant, what
+constraints apply). See ADR-0008 for the architecture decisions: VS
+Code first, extension is an adapter only, stdio headless service, low
+noise / high relevance.
+
+### Milestone 19 — VS Code Foundation (v0.6.0)
+
+Goal: a VS Code extension that activates on a FeatureMap project,
+connects to a headless FeatureMap Service, and lists features — the
+first "developer does not run the CLI" surface.
+
+Implement:
+
+- `apps/vscode-extension` package (activation, `extension.ts`)
+
+- `featuremap ide` — headless service over stdio JSON-RPC (same pattern
+  as MCP, ADR-0008 §3); no HTTP port exposed, lifecycle owned by the
+  extension (spawn on activation, shutdown on deactivate)
+
+- `FeatureMapClient` — spawns the service per-workspace, request/
+  notification transport, no business logic in the extension
+
+- project detection: `.featuremap/` presence + `featuremap.yaml`;
+  "Initialize & Scan" command when the project is not scanned yet
+
+- basic Feature list command + status bar presence
+
+CLI / surface:
+
+```bash
+featuremap ide
+```
+
+Exit criteria: opening a FeatureMap project activates the extension,
+connects to the service, and lists features — without the developer
+starting `featuremap dev` or running any command first (besides one
+explicit initialize/scan the first time).
+
+### Milestone 20 — Feature Explorer (v0.6.1)
+
+Goal: a code-oriented Feature Explorer with status, search, grouping,
+and Feature → Code navigation.
+
+Implement:
+
+- `feature-tree-provider.ts` — grouped tree (by status: complete /
+  partial / present / missing), search, refresh
+
+- `open-feature.ts` — Feature → core code QuickPick → open file at
+  symbol line/column
+
+- `feature-detail.ts` — TreeView / QuickPick / Markdown Preview for
+  Purpose, Core Code, Dependencies, Tests, Recent Changes (no heavy
+  WebView in v0.6.x)
+
+Exit criteria: clicking a feature opens its core code; every core asset
+navigates to source (Quality Gate: Feature → Code 100% navigable).
+
+### Milestone 21 — Code Intelligence (v0.6.2) — first acceptance checkpoint
+
+Goal: bidirectional navigation — Code → Related Features via hover,
+CodeLens, and an explain-relation path.
+
+Implement:
+
+- position → symbol resolution: consume the host TypeScript language
+  service for TS/JS (ADR-0008 §5) with a stored-symbol line-match
+  fallback; FeatureMap never re-implements definition/reference/symbol
+
+- symbol → feature lookup over a derived fast index (cached <200ms,
+  ADR-0008 §6) built from feature\_assets / feature\_candidates /
+  evidence
+
+- `hover-provider.ts` — short orientation only: owning features,
+  direct dependencies, related tests, last changed (Hover =
+  orientation, Panel = exploration)
+
+- `codelens-provider.ts` — only confirmed / high-confidence relations,
+  configurable via `featuremap.yaml` (low noise)
+
+- `explain-relation.ts` — consumes the existing Phase 2 evidence chain
+  (`featuremap explain` equivalent over RPC)
+
+Exit criteria: cursor on a core symbol shows its owning feature with
+relation type; hover stays short; CodeLens appears only for
+confirmed/high-confidence; every explanation carries evidence.
+
+### Milestone 22 — Live Change Impact (v0.6.3)
+
+Goal: working-tree edits → affected features while coding.
+
+Implement:
+
+- saved-file trigger (debounced) → incremental graph update →
+  `analyzeImpact` (same path as CLI/API/MCP)
+
+- `impact-view.ts` + status bar "FeatureMap · N affected"
+
+- `show-impact.ts` — severity bands HIGH/MEDIUM/LOW with per-feature
+  evidence ("Why?"), reusing ADR-0004 severity semantics
+
+Exit criteria: saving a change to a core symbol updates the status bar
+in <2s (Quality Gate) with explainable impact; no analysis on every
+keystroke.
+
+### Milestone 23 — Review & Diagnostics (v0.6.4)
+
+Goal: bring Feature maintenance into the IDE — accept/reject and drift
+diagnostics.
+
+Implement:
+
+- suggested-relation notifications in the editor with
+  \[Accept] / \[Reject] / \[Explain]; verdicts persisted via the existing
+  `setVerdict` path (same state machine as ADR-0003 §4)
+
+- `diagnostics.ts` → VS Code Problems for drift: `relation_broken` and
+  `new_candidate` (reuse ADR-0005 §4 deterministic drift)
+
+- status bar drift indicator ("FeatureMap ⚠ N issues")
+
+Exit criteria: accept/reject persists across rescans; drift entries
+appear in Problems and clear after handling; drift never auto-accepts.
+
+### Milestone 24 — AI Context UX (v0.6.5) — ✅ Complete
+
+Status: complete. Phase 6 wrap-up: `packages/context` gained the
+canonical presentation projection `buildFeatureContextDocument` (maps
+the budgeted FeatureContext → sections + Recommended Files from the
+final ranked projection + deterministic contextId + artifact path +
+canonical Markdown renderer); the CLI `context` command now outputs
+that canonical Markdown; a single new IDE RPC `context.build` feeds
+the extension Build Feature Context / Copy Agent Context / Build Task
+Context commands, a `featuremap-context:` Markdown Preview (snapshot,
+rebuild on demand), explicit Save to `.featuremap/context/<id>.md`,
+and Recommended Files QuickPick navigation. Read-only invariant, task
+only reranks, no source bodies (regression-guarded). Planned by the
+web-planning loop (ChatGPT) before implementation.
+
+Goal: bring Phase 5 context into the IDE — build/copy agent context and
+task context.
+
+Implement:
+
+- `build-context.ts` / `build-task-context.ts` → `buildFeatureContext`
+  with task-aware ranking (`--task`)
+
+- "Copy Agent Context" and save `.featuremap/context/<feature>.md`
+
+- Recommended Files surfaced from the agent renderer
+
+- no binding to a specific AI product (no in-IDE AI chat, ADR-0008 §9)
+
+Exit criteria: a developer can produce a task-aware context for a task
+like "fix login session expiration" entirely in the IDE and copy it to
+an external AI tool.
 
 ## Phase 3 acceptance scenario
 
@@ -626,12 +856,18 @@ place with fixture-level assertions pinning shared-infra behavior.
 Do not start until MVP usage validates demand:
 
 - GitHub App / PR impact comments
-- VS Code / Cursor extension
+
 - GitLab
+
 - SaaS team workspace
+
 - multi-repo features
+
 - Java/Python/Go analyzers
+
 - runtime traces
+
 - screenshot/product UI evidence
+
 - Rust indexer
 

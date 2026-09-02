@@ -111,6 +111,9 @@ describe('parseDiffHunks (--unified=0)', () => {
 });
 
 describe('inspectCommit integration (scripted commit sequence)', () => {
+  // Real git subprocesses under full-suite parallelism (27 files) can
+  // exceed vitest's default 5000ms timeout on Windows; the integration
+  // itself is fast in isolation (~1s).
   it('reports deterministic changed symbols; non-HEAD commits are approximate', async () => {
     const repo = tempDir();
     await $`git -C ${repo} init -b main -q`;
@@ -192,7 +195,7 @@ describe('inspectCommit integration (scripted commit sequence)', () => {
     // modified plus two appended lines (6 = blank, 7 = comment).
     const hunks = await hunksForCommit(repo, sha2);
     expect(hunks).toEqual([{ path: 'src/auth.ts', changeType: 'modified', newLines: [5, 6, 7] }]);
-  });
+  }, 20_000);
 
   it('rejects an invalid commit-ish', async () => {
     const repo = tempDir();
@@ -200,5 +203,5 @@ describe('inspectCommit integration (scripted commit sequence)', () => {
     await $`git -C ${repo} -c user.name=Test -c user.email=test@example.com commit -m init --allow-empty --quiet`;
     const dbPath = join(repo, '.featuremap', 'test.db');
     await expect(inspectCommit(repo, 'does-not-exist', dbPath)).rejects.toThrow();
-  });
+  }, 20_000);
 });

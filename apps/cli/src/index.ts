@@ -524,8 +524,21 @@ program
     task?: string;
   }) => {
     try {
-      const { buildFeatureContext, renderContext } = await import('@featuremap/context');
+      const { buildFeatureContext, buildFeatureContextDocument, renderContext } = await import('@featuremap/context');
       const format = opts.format === 'json' || opts.format === 'agent' ? opts.format : 'markdown';
+      if (format === 'markdown') {
+        // Canonical renderer shared with the IDE (v0.6.5 plan §1.3) so
+        // CLI / IDE Copy / Preview / Save can never diverge.
+        const document = buildFeatureContextDocument(process.cwd(), feature, {
+          task: opts.task,
+          budget: opts.budget,
+          depth: opts.depth,
+          includeHistory: opts.includeHistory,
+          includeTests: opts.includeTests,
+        });
+        console.log(document.markdown);
+        return;
+      }
       const context = buildFeatureContext(process.cwd(), feature, {
         format,
         budget: opts.budget,
@@ -649,6 +662,20 @@ program
       const { startMcpStdio } = await import('@featuremap/mcp');
       await startMcpStdio({ repoRoot: process.cwd() });
       // stdio transport keeps the process alive; Ctrl+C terminates.
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('ide')
+  .description('以 stdio JSON-RPC 方式运行 FeatureMap IDE 服务（Phase 6 / ADR-0008；供编辑器扩展派生使用）。')
+  .action(async () => {
+    try {
+      const { startIdeStdio } = await import('@featuremap/ide');
+      await startIdeStdio({ repoRoot: process.cwd() });
+      // stdio transport keeps the process alive; the extension owns shutdown.
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exitCode = 1;
