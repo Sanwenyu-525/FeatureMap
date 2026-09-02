@@ -30,6 +30,7 @@ import { resolveSymbolRef } from './providers/position-symbol';
 import { ImpactRefreshScheduler } from './providers/save-adapter';
 import { ImpactTreeProvider } from './providers/impact-tree-provider';
 import { registerDriftDiagnostics } from './providers/drift-diagnostics';
+import { registerContextUx } from './providers/context-ux';
 
 export function activate(context: vscode.ExtensionContext): void {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -494,6 +495,10 @@ export function activate(context: vscode.ExtensionContext): void {
     await treeProvider.load();
     await refreshDrift();
   })();
+
+  // AI Context UX (v0.6.5) — the only consumer of the read-only
+  // context.build projection (plan §1.2).
+  registerContextUx(context, { getClient, repoRoot });
 }
 
 export function deactivate(): void {

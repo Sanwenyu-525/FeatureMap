@@ -31,6 +31,14 @@
       { "command": "featuremap.rejectSuggestion", "title": "FeatureMap: Reject Suggestion" },
       { "command": "featuremap.explainSuggestion", "title": "FeatureMap: Explain Suggestion" },
       { "command": "featuremap.openSuggestionTarget", "title": "FeatureMap: Open Suggestion Target" },
+      { "command": "featuremap.buildFeatureContext", "title": "FeatureMap: Build Feature Context" },
+      { "command": "featuremap.copyAgentContext", "title": "FeatureMap: Copy Agent Context" },
+      { "command": "featuremap.buildTaskContext", "title": "FeatureMap: Build Task Context" },
+      { "command": "featuremap.copyCurrentContext", "title": "FeatureMap: Copy Current Context" },
+      { "command": "featuremap.saveCurrentContext", "title": "FeatureMap: Save Current Context" },
+      { "command": "featuremap.openRecommendedFiles", "title": "FeatureMap: Open Recommended Files" },
+      { "command": "featuremap.rebuildCurrentContext", "title": "FeatureMap: Rebuild Current Context" },
+      { "command": "featuremap.openRecommendedFile", "title": "FeatureMap: Open Recommended File" },
       { "command": "featuremap.toggleGrouping", "title": "FeatureMap: Toggle Feature Grouping" },
       { "command": "featuremap.refresh", "title": "FeatureMap: Refresh" }
     ],
@@ -60,6 +68,19 @@
         { "command": "featuremap.toggleGrouping", "when": "view == featuremap.features", "group": "navigation@2" },
         { "command": "featuremap.searchFeatures", "when": "view == featuremap.features", "group": "navigation@3" },
         { "command": "featuremap.refreshCurrentImpact", "when": "view == featuremap.impact", "group": "navigation@1" }
+      ],
+      "view/item/context": [
+        { "command": "featuremap.buildFeatureContext", "when": "view == featuremap.features && viewItem == feature", "group": "context@1" },
+        { "command": "featuremap.copyAgentContext", "when": "view == featuremap.features && viewItem == feature", "group": "context@2" }
+      ],
+      "editor/context": [
+        { "command": "featuremap.buildTaskContext", "when": "editorHasSelection && editorTextFocus", "group": "featuremap@1" }
+      ],
+      "editor/title": [
+        { "command": "featuremap.copyCurrentContext", "when": "resourceScheme == featuremap-context", "group": "navigation@1" },
+        { "command": "featuremap.saveCurrentContext", "when": "resourceScheme == featuremap-context", "group": "navigation@2" },
+        { "command": "featuremap.openRecommendedFiles", "when": "resourceScheme == featuremap-context", "group": "navigation@3" },
+        { "command": "featuremap.rebuildCurrentContext", "when": "resourceScheme == featuremap-context", "group": "navigation@4" }
       ]
     }
   },

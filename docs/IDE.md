@@ -29,6 +29,7 @@ only in `src/providers/position-symbol.ts` (plan §A1).
 | `review.verdict` | wraps `setVerdict`; optimistic `expectedFingerprint` concurrency check (plan §15) |
 | `review.explain` | evidence chain for a file or symbol candidate |
 | `diagnostics.drift` | deterministic drift over indexed state — never scans (plan §17) |
+| `context.build` | canonical read-only Feature/Task context document (v0.6.5 — the only new RPC) |
 | `scan.run` / `init.run` | maintenance (invalidates the index) |
 
 `impact.refresh` is the **only** save-triggered entry point; the
@@ -120,6 +121,26 @@ no row-level cache sync until profiling proves a bottleneck).
 - Drift status bar: `FeatureMap ⚠ N issues` (N from the DTO), hidden at
   0, click focuses Problems. No toasts, no Review CodeLens, no
   auto-popups (plan §30–§31).
+
+## AI Context UX (v0.6.5)
+
+- The only new RPC is `context.build` → the canonical read-only
+  `FeatureContextDocument` (sections, Recommended Files, deterministic
+  contextId, `.featuremap/context/<id>.md` artifact, canonical
+  Markdown). Copy / Preview / Save / navigation are extension-side
+  consumers of that one result (plan §19–§28).
+- CLI `featuremap context` outputs the same canonical Markdown (shared
+  `buildFeatureContextDocument` + `renderFeatureContextMarkdown`), so
+  CLI / Copy / Preview / Save can never diverge.
+- Commands: Build Feature Context / Copy Agent Context (Feature node
+  right-click), Build Task Context (editor selection → resolve Feature
+  → task InputBox; selection text never enters the RPC), plus
+  Copy / Save / Recommended Files / Rebuild title actions on the
+  `featuremap-context:` Preview (a snapshot, rebuilt on demand — never
+  auto-follows save).
+- Save is explicit only: `workspace.fs` → `.featuremap/context/<id>.md`
+  with a path-escape guard. Context build never writes the graph
+  (read-only invariant, regression-tested).
 
 ## Adapter boundary (extension)
 

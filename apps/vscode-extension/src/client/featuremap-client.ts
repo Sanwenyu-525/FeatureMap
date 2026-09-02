@@ -202,6 +202,44 @@ export interface IdeReviewExplain {
   evidenceChain: Array<{ relationType: string; sourceId: string; targetId: string; confidence: number }>;
 }
 
+/** AI Context document DTOs (v0.6.5). */
+export interface IdeContextEntry {
+  path: string;
+  role: 'core' | 'dependency' | 'test' | 'policy' | 'change' | 'other';
+  symbol?: { id?: string; name: string; signature?: string; startLine?: number; endLine?: number };
+  relation?: { type: string; featureId?: string; targetId?: string };
+  evidence?: Array<{ relationType?: string; confidence?: number; analyzerId?: string }>;
+  summary?: string;
+}
+
+export interface IdeRecommendedFile {
+  path: string;
+  roles: IdeContextEntry['role'][];
+  reason: string;
+  location?: { startLine: number; endLine?: number };
+  symbols?: Array<{ name: string; signature?: string; startLine?: number }>;
+}
+
+export interface IdeContextDocument {
+  formatVersion: 1;
+  contextId: string;
+  feature: { id: string; name: string };
+  task?: string;
+  sections: {
+    purpose?: string;
+    core: IdeContextEntry[];
+    dependencies: IdeContextEntry[];
+    tests: IdeContextEntry[];
+    policies: IdeContextEntry[];
+    changes: IdeContextEntry[];
+    other: IdeContextEntry[];
+  };
+  recommendedFiles: IdeRecommendedFile[];
+  budget?: { requested: number; estimatedTotal: number; allocation: Record<string, number> };
+  markdown: string;
+  artifact: { relativePath: string };
+}
+
 export interface ClientTransport {
   stdin: Writable;
   stdout: Readable;
