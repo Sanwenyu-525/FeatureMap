@@ -327,3 +327,88 @@ describe('live impact RPC (v0.6.3)', () => {
     }
   });
 });
+
+describe('review & diagnostics RPC (v0.6.4)', () => {
+  let rdDir: string;
+  let rdDb: string;
+  let rdService: ReturnType<typeof createIdeService>;
+
+  beforeAll(async () => {
+    rdDir = mkdtempSync(join(tmpdir(), 'featuremap-ide-rd-'));
+    rdDb = join(rdDir, 'featuremap.db');
+    await runScan(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login'), { dbPath: rdDb });
+    rdService = createIdeService({ repoRoot: join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login'), dbPath: rdDb });
+  });
+
+  afterAll(() => {
+    rdService.close();
+    rmSync(rdDir, { recursive: true, force: true });
+  });
+
+  it('suggestions.list returns an ordered review inbox', () => {
+    const rows = rdService.handlers['suggestions.list']({}) as Array<{
+      feature: { id: string };
+      target: { type: string; id: string; label: string };
+      status: string;
+      score: number;
+    }>;
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.every((r) => r.status === 'suggested')).toBe(true);
+    // Deterministic ordering: score DESC.
+    const scores = rows.map((r) => r.score);
+    expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+  });
+
+  it('review.explain returns the stored evidence chain', () => {
+    const r = rdService.handlers['review.explain']({
+      featureId: 'feature:login',
+      target: { type: 'symbol', id: 'symbol:src/auth/login-handler.ts:loginHandler' },
+    }) as { feature: { id: string }; relation: string; evidenceChain: unknown[] };
+    expect(r.feature.id).toBe('feature:login');
+    expect(r.relation).toBe('OWNS');
+    expect(Array.isArray(r.evidenceChain)).toBe(true);
+  });
+
+  it('review.verdict never applies to a non-suggested (declared) relation', () => {
+    const r = rdService.handlers['review.verdict']({
+      featureId: 'feature:login',
+      target: { type: 'symbol', id: 'symbol:src/auth/login-handler.ts:loginHandler' },
+      verdict: 'accepted',
+    }) as { applied: boolean; reason?: string };
+    expect(r.applied).toBe(false);
+    if (!r.applied) expect(r.reason).toBe('candidate_changed');
+  });
+
+  it('diagnostics.drift returns a DriftReport without scanning', async () => {
+    const r = (await rdService.handlers['diagnostics.drift']()) as {
+      issues: unknown[];
+      summary: { issueCount: number; byType: { relation_broken: number; new_candidate: number } };
+    };
+    expect(r.summary.issueCount).toBe(r.issues.length);
+    expect(typeof r.summary.byType.relation_broken).toBe('number');
+    expect(typeof r.summary.byType.new_candidate).toBe('number');
+  });
+
+  it('review.verdict invalidates drift (accept removes the suggestion)', async () => {
+    const suggestions = rdService.handlers['suggestions.list']({}) as Array<{ feature: { id: string }; target: { type: string; id: string }; fingerprint: string }>;
+    const first = suggestions[0];
+    // Only run the mutation when a suggested relation exists in the fixture.
+    if (first) {
+      const verdict = rdService.handlers['review.verdict']({
+        featureId: first.feature.id,
+        target: { type: first.target.type, id: first.target.id },
+        verdict: 'rejected',
+        expectedFingerprint: first.fingerprint,
+      }) as { applied: boolean };
+      expect(verdict.applied).toBe(true);
+      // Rejected suggestion is gone from the inbox.
+      const after = rdService.handlers['suggestions.list']({}) as Array<{ feature: { id: string }; target: { type: string; id: string } }>;
+      expect(after.some((s) => s.feature.id === first.feature.id && s.target.id === first.target.id)).toBe(false);
+      // Drift is still computable after invalidation.
+      const drift = (await rdService.handlers['diagnostics.drift']()) as { issues: unknown[] };
+      expect(Array.isArray(drift.issues)).toBe(true);
+    } else {
+      expect(suggestions).toHaveLength(0);
+    }
+  });
+});

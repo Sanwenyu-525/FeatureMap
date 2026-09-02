@@ -22,13 +22,21 @@ import {
   createCurrentImpactStore,
   refreshCurrentImpact,
   getCurrentImpact,
+  listSuggestedRelations,
+  applyReviewVerdict,
+  explainReviewRelation,
+  detectDrift,
   type CodeIntelligenceResult,
   type CurrentImpactSnapshot,
   type DocumentSymbolFeature,
+  type DriftReport,
   type ExplainFeatureRelationResult,
   type RelatedFeaturesOptions,
   type RelatedFeaturesResult,
   type ResolvedSymbol,
+  type ReviewExplainResult,
+  type ReviewVerdictResult,
+  type SuggestedRelationDto,
   type SymbolRef,
 } from '@featuremap/pipeline';
 import { DomainErrorCode, RpcError, RpcErrorCode } from './rpc.js';
@@ -136,6 +144,13 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
 
   // Live Change Impact store (v0.6.3): repo-scoped cached snapshot.
   const impactStore = createCurrentImpactStore();
+
+  // Drift diagnostics cache (v0.6.4 plan §9): recomputed after any
+  // mutation (scan / impact.refresh / verdict); never self-scans.
+  let driftReport: DriftReport | undefined;
+  const invalidateDrift = (): void => {
+    driftReport = undefined;
+  };
 
   const requireInitialized = (): void => {
     if (!existsSync(join(repoRoot, CONFIG_FILE_NAME))) {
@@ -338,6 +353,7 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       const result = await runScan(repoRoot, { full: input.mode === 'full', dbPath });
       closeDb();
       invalidateIndex();
+      invalidateDrift();
       return { status: 'completed', counts: result.counts };
     },
 
@@ -406,6 +422,7 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       try {
         const result = await refreshCurrentImpact(repoRoot, { savedFiles, trigger, dbPath }, impactStore);
         invalidateIndex();
+        invalidateDrift();
         return result;
       } catch (err) {
         throw new RpcError(
@@ -418,6 +435,76 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
     /** impact.current — cheap read of the last snapshot (plan §7.2), never triggers analysis. */
     'impact.current': (): { available: boolean; snapshot?: CurrentImpactSnapshot } =>
       getCurrentImpact(repoRoot, impactStore),
+
+    /** suggestions.list — Review inbox (status suggested only, plan §11). */
+    'suggestions.list': (params): SuggestedRelationDto[] => {
+      requireInitialized();
+      const input = (params ?? {}) as { filter?: { featureId?: string; targetType?: 'file' | 'symbol'; limit?: number } };
+      return listSuggestedRelations(repoRoot, input.filter ?? {}, dbPath);
+    },
+
+    /** review.verdict — wraps setVerdict with optimistic fingerprint check (plan §15). */
+    'review.verdict': (params): ReviewVerdictResult => {
+      requireInitialized();
+      const input = (params ?? {}) as {
+        featureId?: string;
+        target?: { type?: 'file' | 'symbol'; id?: string };
+        verdict?: string;
+        expectedFingerprint?: string;
+      };
+      if (typeof input.featureId !== 'string' || input.featureId === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'featureId is required.');
+      }
+      if (input.target?.type !== 'file' && input.target?.type !== 'symbol') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'target.type is required.');
+      }
+      if (typeof input.target?.id !== 'string' || input.target.id === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'target.id is required.');
+      }
+      if (input.verdict !== 'accepted' && input.verdict !== 'rejected') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'verdict must be "accepted" or "rejected".');
+      }
+      const result = applyReviewVerdict(
+        repoRoot,
+        {
+          featureId: input.featureId,
+          target: { type: input.target.type, id: input.target.id },
+          verdict: input.verdict,
+          expectedFingerprint: input.expectedFingerprint,
+        },
+        dbPath,
+      );
+      if (result.applied) {
+        invalidateIndex();
+        invalidateDrift();
+      }
+      return result;
+    },
+
+    /** review.explain — evidence chain for a file or symbol candidate (plan §16). */
+    'review.explain': (params): ReviewExplainResult => {
+      requireInitialized();
+      const input = (params ?? {}) as { featureId?: string; target?: { type?: 'file' | 'symbol'; id?: string } };
+      if (typeof input.featureId !== 'string' || input.featureId === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'featureId is required.');
+      }
+      if (input.target?.type !== 'file' && input.target?.type !== 'symbol') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'target.type is required.');
+      }
+      if (typeof input.target?.id !== 'string' || input.target.id === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'target.id is required.');
+      }
+      return explainReviewRelation(repoRoot, input.featureId, { type: input.target.type, id: input.target.id }, dbPath);
+    },
+
+    /** diagnostics.drift — deterministic drift over indexed state; never scans (plan §17). */
+    'diagnostics.drift': async (): Promise<DriftReport> => {
+      requireInitialized();
+      if (!driftReport) {
+        driftReport = await detectDrift(repoRoot, { dbPath });
+      }
+      return driftReport;
+    },
     },
     close: closeDb,
   };
