@@ -835,6 +835,64 @@ panel builds and copies context in the browser; CLI / MCP / IDE / HTTP
 agree on the same canonical document for the golden fixture; `pnpm
 lint` / `typecheck` / `test` / `test:e2e` all green.
 
+### Milestone 26 — Mapping Quality (v0.7.1) — ✅ Complete
+
+Status: complete. Reviewed by the web-planning loop (ChatGPT) before
+implementation. Built the golden mapping corpus + deterministic
+benchmark runner + metrics + CI gate. The first priority shifts from
+Feature coverage to Feature trustworthiness: high-confidence FP = 0%,
+shared-infra false promotion = 0%, wrong ownership = 0%, recall ~98%
+(see `docs/MAPPING_QUALITY.md` and
+`docs/quality/mapping-baseline.json`). A benchmark-side tolerant
+matching fix (file-aware + qualified-id prefix) and corpus alignment
+removed the granularity mismatch; failure classification confirmed 0
+semantic-ambiguous failures, so no LLM is warranted.
+
+Goal: make Mapping Quality a measurable, corpus-based, CI-gated
+engineering system.
+
+Implement:
+
+- Stage 0 — Benchmark Contract: `mapping.expected.json` schema
+  (`version`, `features[]` with `expected`/`notExpected`, `entities[]`),
+  `ExpectedMapping` with stable locator (`path` + `symbol` name, never
+  DB ids), `confidenceClass` (`must-high` / `may-suggest` /
+  `must-not-high`), `tags`, deterministic target resolver.
+- Stage 1 — Golden Corpus: upgrade fixtures 01–06 with colocated
+  `mapping.expected.json`; curated slices (≈30–40 expected, ≈20–30
+  hard negatives) covering basic ownership, graph distance, shared
+  infrastructure, cross-feature ambiguity, tests/docs, realistic
+  composite.
+- Stage 2 — Benchmark Runner: `packages/pipeline/src/quality/` —
+  fresh deterministic scan → resolve ground truth → compare
+  predictions → metrics → structured failure list. Consumes the
+  production confidence policy (never a second constant).
+- Stage 3 — Baseline Metrics: precision / recall (by relation),
+  high-confidence FP rate, shared-infra false promotion, cross-feature
+  wrong ownership / ownership inflation, relation confusion matrix.
+  Deterministic and byte-stable; no numeric gate yet.
+- Stage 4 — Failure Classification: label failures
+  `deterministic-fixable` / `semantic-ambiguous` / `annotation-error` /
+  `unsupported`; only then decide the optimization target.
+- Stage 5 — Deterministic Fixes: shared-infra suppression (fanIn /
+  featureFanIn), distance decay, relation precedence, ownership
+  propagation, ownership inflation. One policy change → benchmark →
+  inspect delta. Target high-confidence FP < 10% without a basic
+  regression.
+- Stage 6 — CI Gate: hard gates `high-confidence FP < 10%`, basic
+  fixture regression = 0, golden expected relation regression = 0;
+  soft report precision / recall / shared infra / ambiguity.
+- Stage 7 — Docs: `docs/MAPPING_QUALITY.md` — metric definitions,
+  corpus policy, CI gates, deterministic vs semantic boundary, LLM
+  trigger criteria (only after the deterministic ceiling is measured;
+  LLM is never the sole mapping authority).
+
+Exit criteria: `pnpm benchmark:mapping` is deterministic and reports
+precision / recall / high-confidence FP / shared-infra false promotion
+/ cross-feature wrong ownership over the 01–06 corpus; high-confidence
+FP < 10%; no regression on the basic fixtures; `pnpm lint` /
+`typecheck` / `test` / `test:e2e` all green.
+
 ## Phase 3 acceptance scenario
 
 Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,

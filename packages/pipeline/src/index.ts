@@ -15,3 +15,4 @@ export * from './timeline.js';
 export * from './code-intelligence/index.js';
 export * from './live-impact/index.js';
 export * from './drift/index.js';
+export * from './quality/index.js';
