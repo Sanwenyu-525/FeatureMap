@@ -243,6 +243,9 @@ importers:
 
   packages/ide:
     dependencies:
+      '@featuremap/context':
+        specifier: workspace:*
+        version: link:../context
       '@featuremap/core':
         specifier: workspace:*
         version: link:../core

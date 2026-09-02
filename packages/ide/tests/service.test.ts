@@ -412,3 +412,70 @@ describe('review & diagnostics RPC (v0.6.4)', () => {
     }
   });
 });
+
+describe('context.build RPC (v0.6.5)', () => {
+  let ctxDir: string;
+  let ctxDb: string;
+  let ctxService: ReturnType<typeof createIdeService>;
+  const repoFixture = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login');
+
+  beforeAll(async () => {
+    ctxDir = mkdtempSync(join(tmpdir(), 'featuremap-ide-ctx-'));
+    ctxDb = join(ctxDir, 'featuremap.db');
+    await runScan(repoFixture, { dbPath: ctxDb });
+    ctxService = createIdeService({ repoRoot: repoFixture, dbPath: ctxDb });
+  });
+
+  afterAll(() => {
+    ctxService.close();
+    rmSync(ctxDir, { recursive: true, force: true });
+  });
+
+  it('returns a canonical document with sections, recommended files and artifact', () => {
+    const doc = ctxService.handlers['context.build']({ featureId: 'feature:login' }) as {
+      contextId: string;
+      feature: { name: string };
+      sections: { core: unknown[] };
+      recommendedFiles: unknown[];
+      markdown: string;
+      artifact: { relativePath: string };
+    };
+    expect(doc.feature.name).toBe('Login');
+    expect(doc.contextId).toBe('login');
+    expect(doc.artifact.relativePath).toBe('.featuremap/context/login.md');
+    expect(doc.sections.core.length).toBeGreaterThan(0);
+    expect(Array.isArray(doc.recommendedFiles)).toBe(true);
+    expect(doc.markdown).toContain('# Feature Context: Login');
+    expect(doc.markdown).toContain('## Recommended Files');
+  });
+
+  it('is task-aware (task section appears) and read-only over the DB', async () => {
+    const { openDatabase, schema } = await import('@featuremap/db');
+    const count = (): number => {
+      const { db, sqlite } = openDatabase(ctxDb);
+      try {
+        return db.select().from(schema.evidence).all().length;
+      } finally {
+        sqlite.close();
+      }
+    };
+    const before = count();
+    const doc = ctxService.handlers['context.build']({ featureId: 'feature:login', task: '  Add refresh token rotation  ' }) as {
+      task?: string;
+      markdown: string;
+      contextId: string;
+    };
+    expect(doc.task).toBe('Add refresh token rotation');
+    expect(doc.markdown).toContain('## Task');
+    expect(doc.contextId).not.toBe('login');
+    expect(count()).toBe(before);
+  });
+
+  it('rejects an unknown feature as CONTEXT_BUILD_FAILED', () => {
+    expect(() => ctxService.handlers['context.build']({ featureId: 'feature:nope' })).toThrow(/CONTEXT_BUILD_FAILED|FEATURE_NOT_FOUND/);
+  });
+
+  it('rejects a missing featureId', () => {
+    expect(() => ctxService.handlers['context.build']({})).toThrow(/featureId is required/);
+  });
+});

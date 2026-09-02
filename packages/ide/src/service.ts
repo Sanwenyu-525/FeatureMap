@@ -13,6 +13,7 @@ import { and, eq, desc, inArray } from 'drizzle-orm';
 import { stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILE_NAME, RUNTIME_DIR_NAME, defaultConfig } from '@featuremap/core';
 import { defaultDatabasePath, openDatabase, schema, type FeatureMapDatabase } from '@featuremap/db';
+import { buildFeatureContextDocument, type FeatureContextDocument } from '@featuremap/context';
 import {
   runScan,
   SymbolFeatureIndex,
@@ -504,6 +505,28 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
         driftReport = await detectDrift(repoRoot, { dbPath });
       }
       return driftReport;
+    },
+
+    /**
+     * context.build — the only v0.6.5 RPC (plan §19–§28). A thin
+     * adapter over the canonical read-only document projection; Copy /
+     * Preview / Save are all extension-side consumers of this result.
+     */
+    'context.build': (params): FeatureContextDocument => {
+      requireInitialized();
+      const input = (params ?? {}) as { featureId?: string; task?: string };
+      if (typeof input.featureId !== 'string' || input.featureId === '') {
+        throw new RpcError(RpcErrorCode.InvalidParams, 'featureId is required.');
+      }
+      const task = typeof input.task === 'string' && input.task.trim().length > 0 ? input.task : undefined;
+      try {
+        return buildFeatureContextDocument(repoRoot, input.featureId, { task, dbPath });
+      } catch (err) {
+        throw new RpcError(
+          DomainErrorCode,
+          `CONTEXT_BUILD_FAILED: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     },
     },
     close: closeDb,
