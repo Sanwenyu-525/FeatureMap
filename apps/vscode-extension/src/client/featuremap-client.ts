@@ -157,6 +157,51 @@ export interface IdeImpactRefreshResult {
   refresh: { scannedFiles: number; changedFiles: number; durationMs: number };
 }
 
+/** Review & Diagnostics DTOs (v0.6.4). */
+export interface IdeSuggestedRelation {
+  feature: { id: string; name: string };
+  target: { type: 'file' | 'symbol'; id: string; label: string; location?: { filePath: string; startLine: number; endLine?: number } };
+  relation: 'OWNS' | 'DEPENDS_ON';
+  status: 'suggested';
+  score: number;
+  distance: number;
+  fanIn: number;
+  fingerprint: string;
+  evidence: { available: boolean; count: number };
+}
+
+export type IdeDriftKind = 'relation_broken' | 'new_candidate';
+
+export interface IdeDriftIssue {
+  id: string;
+  kind: IdeDriftKind;
+  featureId: string;
+  featureName?: string;
+  targetId: string;
+  targetType: 'file' | 'symbol';
+  reason: string;
+  location?: { filePath: string; startLine: number; endLine?: number };
+  candidate?: { fingerprint?: string; status?: string; score?: number };
+}
+
+export interface IdeDriftReport {
+  issues: IdeDriftIssue[];
+  summary: { issueCount: number; byType: Record<IdeDriftKind, number> };
+}
+
+export type IdeReviewVerdictResult =
+  | { applied: true; candidate: { featureId: string; target: { type: string; id: string }; status: 'accepted' | 'rejected'; fingerprint: string } }
+  | { applied: false; reason: 'candidate_changed'; currentCandidate?: IdeSuggestedRelation };
+
+export interface IdeReviewExplain {
+  feature: { id: string; name: string };
+  target: { type: 'file' | 'symbol'; id: string; label: string };
+  relation: 'OWNS' | 'DEPENDS_ON';
+  score: number;
+  status: string;
+  evidenceChain: Array<{ relationType: string; sourceId: string; targetId: string; confidence: number }>;
+}
+
 export interface ClientTransport {
   stdin: Writable;
   stdout: Readable;

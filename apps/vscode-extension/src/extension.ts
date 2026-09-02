@@ -11,12 +11,16 @@ import { basename, join } from 'node:path';
 import {
   spawnFeatureMapService,
   type FeatureMapClient,
+  type IdeDriftReport,
   type IdeExplainRelation,
   type IdeFeature,
   type IdeFeatureDetail,
   type IdeImpactRefreshResult,
   type IdeProjectStatus,
   type IdeRelatedFeaturesResult,
+  type IdeReviewExplain,
+  type IdeReviewVerdictResult,
+  type IdeSuggestedRelation,
   type IdeSymbolRef,
 } from './client/featuremap-client';
 import { FeatureTreeProvider } from './providers/feature-tree-provider';
@@ -25,6 +29,7 @@ import { registerCodeLensProvider } from './providers/codelens-provider';
 import { resolveSymbolRef } from './providers/position-symbol';
 import { ImpactRefreshScheduler } from './providers/save-adapter';
 import { ImpactTreeProvider } from './providers/impact-tree-provider';
+import { registerDriftDiagnostics } from './providers/drift-diagnostics';
 
 export function activate(context: vscode.ExtensionContext): void {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -253,6 +258,7 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.command = 'featuremap.showCurrentImpact';
       statusBar.tooltip = `Impact refreshed at ${result.snapshot.refreshedAt}`;
       await impactTreeProvider.load();
+      await refreshDrift();
     } catch (err) {
       statusBar.text = '$(error) FeatureMap: impact unavailable';
       statusBar.tooltip = err instanceof Error ? err.message : String(err);
@@ -262,6 +268,38 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const impactScheduler = new ImpactRefreshScheduler((files) => refreshImpact(files, 'save'));
   context.subscriptions.push({ dispose: () => impactScheduler.dispose() });
+
+  // Drift diagnostics + drift status bar (v0.6.4).
+  const driftDiagnostics = registerDriftDiagnostics(repoRoot() ?? '', getClient);
+  context.subscriptions.push({ dispose: () => driftDiagnostics.dispose() });
+  const driftStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+  driftStatusBar.name = 'FeatureMap Drift';
+  context.subscriptions.push(driftStatusBar);
+
+  function applyDriftStatus(report: IdeDriftReport): void {
+    const n = report.summary.issueCount;
+    if (n > 0) {
+      driftStatusBar.text = `$(warning) FeatureMap ⚠ ${n} issue${n > 1 ? 's' : ''}`;
+      driftStatusBar.command = 'workbench.action.problems.focus';
+      driftStatusBar.tooltip = `${n} drift issue(s) — click to open Problems.`;
+      driftStatusBar.show();
+    } else {
+      driftStatusBar.hide();
+    }
+  }
+
+  async function refreshDrift(): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    try {
+      const report = await c.request<IdeDriftReport>('diagnostics.drift');
+      await driftDiagnostics.refresh();
+      applyDriftStatus(report);
+    } catch {
+      driftStatusBar.hide();
+      driftDiagnostics.refresh();
+    }
+  }
 
   // Save-triggered impact (v0.6.3 plan §8/§9): aggregate saves, never
   // per-keystroke, never scan.run from the extension.
@@ -282,6 +320,120 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.workspace
       .openTextDocument(vscode.Uri.file(join(root, path)))
       .then((doc) => vscode.window.showTextDocument(doc));
+  }
+
+  // ---- Review workflow (v0.6.4 plan §25–§36) -------------------------
+
+  async function openSuggestionTarget(suggestion: IdeSuggestedRelation): Promise<void> {
+    const root = repoRoot();
+    const loc = suggestion.target.location;
+    if (!root || !loc) return;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(join(root, loc.filePath)));
+    const editor = await vscode.window.showTextDocument(doc);
+    if (loc.startLine > 0) {
+      const pos = new vscode.Position(loc.startLine - 1, 0);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+      editor.selection = new vscode.Selection(pos, pos);
+    }
+  }
+
+  async function explainSuggestion(suggestion: IdeSuggestedRelation): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    try {
+      const exp = await c.request<IdeReviewExplain>('review.explain', {
+        featureId: suggestion.feature.id,
+        target: { type: suggestion.target.type, id: suggestion.target.id },
+      });
+      const items = [
+        {
+          label: `${exp.feature.name} — ${exp.relation} ${exp.target.label}`,
+          description: `Score ${Math.round(exp.score * 100)}%`,
+          detail: `status: ${exp.status}`,
+        },
+        ...exp.evidenceChain.slice(0, 10).map((step, i) => ({
+          label: `${i + 1}. ${step.sourceId}`,
+          description: step.relationType,
+          detail: `→ ${step.targetId} (${Math.round(step.confidence * 100)}%)`,
+        })),
+      ];
+      await vscode.window.showQuickPick(items, {
+        placeHolder: `Why ${exp.target.label} belongs to ${exp.feature.name}`,
+        matchOnDescription: true,
+      });
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function applySuggestionVerdict(suggestion: IdeSuggestedRelation, verdict: 'accepted' | 'rejected'): Promise<boolean> {
+    const c = await connect();
+    if (!c) return false;
+    try {
+      const result = await c.request<IdeReviewVerdictResult>('review.verdict', {
+        featureId: suggestion.feature.id,
+        target: { type: suggestion.target.type, id: suggestion.target.id },
+        verdict,
+        expectedFingerprint: suggestion.fingerprint,
+      });
+      if (!result.applied) {
+        void vscode.window.showInformationMessage(
+          `FeatureMap: candidate changed since it was listed — refreshed the Review inbox.`,
+        );
+        await treeProvider.load();
+        return false;
+      }
+      // Verdict applied: refresh Explorer, CodeLens, diagnostics, drift status.
+      await treeProvider.load();
+      await refreshDrift();
+      return true;
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }
+
+  async function reviewSuggestions(): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    try {
+      const suggestions = await c.request<IdeSuggestedRelation[]>('suggestions.list');
+      if (suggestions.length === 0) {
+        void vscode.window.showInformationMessage('FeatureMap: no suggested relations to review.');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        suggestions.map((s) => ({
+          label: `${s.feature.name} → ${s.target.label}`,
+          description: `${s.relation} · ${Math.round(s.score * 100)}%`,
+          detail: s.target.type,
+          suggestion: s,
+        })),
+        { placeHolder: 'Review suggested relations' },
+      );
+      if (!pick) return;
+      const action = await vscode.window.showQuickPick(
+        [
+          { label: 'Accept', action: 'accept' },
+          { label: 'Reject', action: 'reject' },
+          { label: 'Explain', action: 'explain' },
+          { label: 'Open Target', action: 'open' },
+        ],
+        { placeHolder: `${pick.label}` },
+      );
+      if (!action) return;
+      if (action.action === 'accept') {
+        if (await applySuggestionVerdict(pick.suggestion, 'accepted')) void reviewSuggestions();
+      } else if (action.action === 'reject') {
+        if (await applySuggestionVerdict(pick.suggestion, 'rejected')) void reviewSuggestions();
+      } else if (action.action === 'explain') {
+        await explainSuggestion(pick.suggestion);
+      } else {
+        await openSuggestionTarget(pick.suggestion);
+      }
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const treeProvider = new FeatureTreeProvider(getClient);
@@ -311,6 +463,19 @@ export function activate(context: vscode.ExtensionContext): void {
       void refreshImpact([], 'manual');
     }),
     vscode.commands.registerCommand('featuremap.openImpactFile', (path?: string) => openImpactFile(path)),
+    vscode.commands.registerCommand('featuremap.reviewSuggestions', reviewSuggestions),
+    vscode.commands.registerCommand('featuremap.openSuggestionTarget', (suggestion?: IdeSuggestedRelation) => {
+      if (suggestion) void openSuggestionTarget(suggestion);
+    }),
+    vscode.commands.registerCommand('featuremap.explainSuggestion', (suggestion?: IdeSuggestedRelation) => {
+      if (suggestion) void explainSuggestion(suggestion);
+    }),
+    vscode.commands.registerCommand('featuremap.acceptSuggestion', (suggestion?: IdeSuggestedRelation) => {
+      if (suggestion) void applySuggestionVerdict(suggestion, 'accepted');
+    }),
+    vscode.commands.registerCommand('featuremap.rejectSuggestion', (suggestion?: IdeSuggestedRelation) => {
+      if (suggestion) void applySuggestionVerdict(suggestion, 'rejected');
+    }),
     vscode.commands.registerCommand('featuremap.refresh', () => {
       void (async () => {
         await treeProvider.load();
@@ -327,6 +492,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void (async () => {
     await refreshStatus();
     await treeProvider.load();
+    await refreshDrift();
   })();
 }
 

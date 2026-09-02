@@ -25,6 +25,10 @@ only in `src/providers/position-symbol.ts` (plan §A1).
 | `code.explainRelation` | evidence chain behind one relation |
 | `impact.refresh` | save-triggered orchestration: incremental scan → `analyzeImpact(WORKING_TREE)` → cached snapshot (invalidates the code-intelligence index) |
 | `impact.current` | cheap read of the last snapshot — never triggers analysis |
+| `suggestions.list` | Review inbox — `status = suggested` only, ranked deterministically |
+| `review.verdict` | wraps `setVerdict`; optimistic `expectedFingerprint` concurrency check (plan §15) |
+| `review.explain` | evidence chain for a file or symbol candidate |
+| `diagnostics.drift` | deterministic drift over indexed state — never scans (plan §17) |
 | `scan.run` / `init.run` | maintenance (invalidates the index) |
 
 `impact.refresh` is the **only** save-triggered entry point; the
@@ -96,6 +100,26 @@ no row-level cache sync until profiling proves a bottleneck).
   it; Tests/Documents open the file.
 - Manual `Refresh Current Change Impact` covers Git checkouts and
   external edits; it never falls back to full filesystem watching.
+
+## Review & Diagnostics (v0.6.4)
+
+- Review runs entirely in the IDE: `Review Suggested Relations` opens a
+  QuickPick of `suggestions.list`; each relation has
+  Accept / Reject / Explain / Open Target. The only verdict writer is
+  `setVerdict` (plan §1.1), with an optimistic fingerprint check so a
+  stale selection is never applied.
+- Drift uses the **shared** `detectDrift` (extracted from the PR
+  report) — the PR and the IDE can never diverge (plan §1.2). It is
+  always detect → suggest: never auto-accept/reject, and it only
+  surfaces deterministic `relation_broken` / `new_candidate`.
+- Problems integration: `relation_broken` → Warning, `new_candidate` →
+  Information, source `FeatureMap`, code = drift type; 1-based → 0-based
+  only in the adapter; the collection is replaced (resolved drift
+  clears). `diagnostics.drift` never scans — it refreshes after
+  connect / impact.refresh / scan / init / verdict.
+- Drift status bar: `FeatureMap ⚠ N issues` (N from the DTO), hidden at
+  0, click focuses Problems. No toasts, no Review CodeLens, no
+  auto-popups (plan §30–§31).
 
 ## Adapter boundary (extension)
 
