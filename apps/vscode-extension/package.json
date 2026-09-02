@@ -20,6 +20,8 @@
       { "command": "featuremap.showFeatures", "title": "FeatureMap: Show Features" },
       { "command": "featuremap.initializeAndScan", "title": "FeatureMap: Initialize & Scan" },
       { "command": "featuremap.openFeature", "title": "FeatureMap: Open Feature" },
+      { "command": "featuremap.searchFeatures", "title": "FeatureMap: Search Features" },
+      { "command": "featuremap.toggleGrouping", "title": "FeatureMap: Toggle Feature Grouping" },
       { "command": "featuremap.refresh", "title": "FeatureMap: Refresh" }
     ],
     "viewsContainers": {
@@ -29,12 +31,19 @@
     },
     "views": {
       "featuremap": [
-        { "id": "featuremap.features", "name": "Features", "when": "featuremap.connected" }
+        {
+          "id": "featuremap.features",
+          "name": "Features",
+          "when": "featuremap.connected",
+          "find": { "where": "view" }
+        }
       ]
     },
     "menus": {
       "view/title": [
-        { "command": "featuremap.refresh", "when": "view == featuremap.features", "group": "navigation" }
+        { "command": "featuremap.refresh", "when": "view == featuremap.features", "group": "navigation@1" },
+        { "command": "featuremap.toggleGrouping", "when": "view == featuremap.features", "group": "navigation@2" },
+        { "command": "featuremap.searchFeatures", "when": "view == featuremap.features", "group": "navigation@3" }
       ]
     }
   },

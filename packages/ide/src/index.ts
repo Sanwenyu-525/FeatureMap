@@ -6,7 +6,7 @@
  * no HTTP port, no manual server start.
  */
 export { createIdeService } from './service.js';
-export type { IdeServiceOptions, ProjectStatus, FeatureSummary, FeatureDetail, IdeHandler, IdeService } from './service.js';
+export type { IdeServiceOptions, ProjectStatus, FeatureSummary, FeatureAsset, FeatureDetail, IdeHandler, IdeService } from './service.js';
 export {
   serveRpc,
   parseRequestLine,

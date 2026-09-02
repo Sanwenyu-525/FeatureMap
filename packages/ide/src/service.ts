@@ -9,7 +9,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import { stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILE_NAME, RUNTIME_DIR_NAME, defaultConfig } from '@featuremap/core';
 import { defaultDatabasePath, openDatabase, schema, type FeatureMapDatabase } from '@featuremap/db';
@@ -43,8 +43,18 @@ export interface FeatureSummary {
   health?: Record<string, string>;
 }
 
+export interface FeatureAsset {
+  id: string;
+  type: string;
+  path?: string;
+  name?: string;
+  confidence: number;
+  /** Symbol assets resolve to a source location (Feature → Symbol → source). */
+  location?: { startLine: number; endLine: number };
+}
+
 export interface FeatureDetail extends FeatureSummary {
-  assets: Array<{ id: string; type: string; path?: string; name?: string; confidence: number }>;
+  assets: FeatureAsset[];
   documents: Array<{ path: string; title?: string }>;
   candidates: Array<{
     id: string;
@@ -140,14 +150,22 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
       return status;
     },
 
-    /** features.list — product features for the Explorer. */
-    'features.list': (): FeatureSummary[] => {
+    /** features.list — product features for the Explorer; optional query filter. */
+    'features.list': (params): FeatureSummary[] => {
       requireInitialized();
-      return getDb()
-        .select()
-        .from(schema.features)
-        .all()
-        .map(featureSummary);
+      const input = (params ?? {}) as { query?: string };
+      const d = getDb();
+      let rows = d.select().from(schema.features).all();
+      if (typeof input.query === 'string' && input.query.trim() !== '') {
+        const q = input.query.trim().toLowerCase();
+        rows = rows.filter(
+          (f) =>
+            f.name.toLowerCase().includes(q) ||
+            (f.description ?? '').toLowerCase().includes(q) ||
+            f.pattern.toLowerCase().includes(q),
+        );
+      }
+      return rows.map(featureSummary);
     },
 
     /** features.get — detail used by the Feature → Code navigation. */
@@ -167,16 +185,74 @@ export function createIdeService(options: IdeServiceOptions): IdeService {
         .from(schema.featureAssets)
         .where(eq(schema.featureAssets.featureId, feature.id))
         .all();
+      // File map for symbol assets → source location (Feature → Symbol → source).
+      const filesByPath = new Map(
+        d.select().from(schema.files).all().map((file) => [file.path, file] as const),
+      );
       const assets: FeatureDetail['assets'] = [];
       for (const fa of featureAssets) {
         const asset = d.select().from(schema.assets).where(eq(schema.assets.id, fa.assetId)).all()[0];
         if (!asset) continue;
+        let location: FeatureAsset['location'];
+        if (asset.type === 'symbol' && asset.path && asset.name) {
+          const file = filesByPath.get(asset.path);
+          if (file) {
+            const symbol = d
+              .select()
+              .from(schema.symbols)
+              .where(and(eq(schema.symbols.fileId, file.id), eq(schema.symbols.name, asset.name)))
+              .all()[0];
+            if (symbol?.startLine != null) {
+              location = { startLine: symbol.startLine, endLine: symbol.endLine ?? symbol.startLine };
+            }
+          }
+        }
         assets.push({
           id: asset.id,
           type: asset.type,
           path: asset.path ?? undefined,
           name: asset.name ?? undefined,
           confidence: fa.confidence,
+          location,
+        });
+      }
+      // Confirmed symbol relations (declared/accepted) also surface as
+      // navigable "Core Code" entries (Feature → Symbol → source). Only
+      // confirmed relations — suggestions stay out of the Explorer until
+      // reviewed (low noise, ADR-0008 §6).
+      const confirmedSymbols = d
+        .select()
+        .from(schema.featureCandidates)
+        .where(
+          and(
+            eq(schema.featureCandidates.featureId, feature.id),
+            eq(schema.featureCandidates.targetType, 'symbol'),
+            inArray(schema.featureCandidates.status, ['declared', 'accepted']),
+          ),
+        )
+        .all();
+      for (const cand of confirmedSymbols) {
+        const sep = cand.targetId.lastIndexOf(':');
+        const path = sep > 0 ? cand.targetId.slice(0, sep) : undefined;
+        const name = sep > 0 ? cand.targetId.slice(sep + 1) : cand.targetId;
+        if (!path) continue;
+        const file = filesByPath.get(path);
+        if (!file) continue;
+        const symbol = d
+          .select()
+          .from(schema.symbols)
+          .where(and(eq(schema.symbols.fileId, file.id), eq(schema.symbols.name, name)))
+          .all()[0];
+        assets.push({
+          id: cand.id,
+          type: 'symbol',
+          path,
+          name,
+          confidence: cand.score,
+          location:
+            symbol?.startLine != null
+              ? { startLine: symbol.startLine, endLine: symbol.endLine ?? symbol.startLine }
+              : undefined,
         });
       }
       const documents = d

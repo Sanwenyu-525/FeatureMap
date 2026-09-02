@@ -124,3 +124,50 @@ describe('init.run / scan.run on a fresh repository', () => {
     await expect(service.handlers['scan.run']({ mode: 'bogus' })).rejects.toThrow();
   });
 });
+
+describe('features.list query filter (v0.6.1)', () => {
+  it('filters by name / description / pattern', () => {
+    const all = service.handlers['features.list'](undefined) as Array<{ id: string }>;
+    const ids = all.map((f) => f.id);
+    const matched = service.handlers['features.list']({ query: 'login' }) as Array<{ id: string }>;
+    expect(matched.length).toBeGreaterThan(0);
+    expect(matched.every((f) => f.id === 'feature:login' || f.id.includes('login'))).toBe(true);
+    // A nonsense query returns nothing rather than erroring.
+    expect(service.handlers['features.list']({ query: 'zzz-no-such-feature' })).toEqual([]);
+    // An empty query behaves like no query.
+    expect((service.handlers['features.list']({ query: '  ' }) as unknown[]).length).toBe(ids.length);
+  });
+});
+
+describe('features.get symbol navigation (v0.6.1)', () => {
+  let symbolDir: string;
+  let symbolDb: string;
+  let symbolService: ReturnType<typeof createIdeService>;
+
+  beforeAll(async () => {
+    symbolDir = mkdtempSync(join(tmpdir(), 'featuremap-ide-sym-'));
+    symbolDb = join(symbolDir, 'featuremap.db');
+    // 01-simple-login has a declared symbol candidate (loginHandler).
+    const loginFixture = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'test-fixtures', '01-simple-login');
+    await runScan(loginFixture, { dbPath: symbolDb });
+    symbolService = createIdeService({ repoRoot: loginFixture, dbPath: symbolDb });
+  });
+
+  afterAll(() => {
+    symbolService.close();
+    rmSync(symbolDir, { recursive: true, force: true });
+  });
+
+  it('exposes confirmed symbol assets with a source location', () => {
+    const detail = symbolService.handlers['features.get']({ featureId: 'feature:login' }) as FeatureDetail;
+    const symbolAssets = detail.assets.filter((a) => a.type === 'symbol');
+    expect(symbolAssets.length).toBeGreaterThan(0);
+    const withLocation = symbolAssets.filter((a) => a.location !== undefined);
+    expect(withLocation.length).toBeGreaterThan(0);
+    for (const asset of withLocation) {
+      expect(asset.path).toBeTruthy();
+      expect(asset.name).toBeTruthy();
+      expect(asset.location!.startLine).toBeGreaterThan(0);
+    }
+  });
+});

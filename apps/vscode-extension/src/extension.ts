@@ -11,6 +11,7 @@ import { basename, join } from 'node:path';
 import {
   spawnFeatureMapService,
   type FeatureMapClient,
+  type IdeFeature,
   type IdeFeatureDetail,
   type IdeProjectStatus,
 } from './client/featuremap-client';
@@ -121,11 +122,50 @@ export function activate(context: vscode.ExtensionContext): void {
       if (chosen?.asset?.path) {
         const uri = vscode.Uri.file(join(root, chosen.asset.path));
         const doc = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(doc);
+        const editor = await vscode.window.showTextDocument(doc);
+        // Feature → Symbol → source: reveal the symbol's line range (v0.6.1).
+        const loc = chosen.asset.location;
+        if (loc && loc.startLine > 0 && editor) {
+          const start = new vscode.Position(loc.startLine - 1, 0);
+          const end = new vscode.Position(Math.max(loc.startLine, loc.endLine) - 1, 0);
+          const range = new vscode.Range(start, end);
+          editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+          editor.selection = new vscode.Selection(start, start);
+        }
       }
     } catch (err) {
       void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  async function searchFeatures(): Promise<void> {
+    const c = await connect();
+    if (!c) return;
+    try {
+      const features = await c.request<IdeFeature[]>('features.list');
+      const pick = await vscode.window.showQuickPick(
+        features.map((feature) => ({
+          label: feature.name,
+          description: feature.pattern,
+          detail: feature.description,
+          feature,
+        })),
+        {
+          placeHolder: 'Search features (name / description / pattern)',
+          matchOnDescription: true,
+          matchOnDetail: true,
+        },
+      );
+      if (pick) await openFeature(pick.feature.id);
+    } catch (err) {
+      void vscode.window.showErrorMessage(`FeatureMap: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  function toggleGrouping(): void {
+    treeProvider.setMode(treeProvider.getMode() === 'status' ? 'flat' : 'status');
+    const label = treeProvider.getMode() === 'status' ? 'grouped by status' : 'flat list';
+    void vscode.window.setStatusBarMessage(`FeatureMap: features ${label}`, 2000);
   }
 
   const treeProvider = new FeatureTreeProvider(getClient);
@@ -139,6 +179,8 @@ export function activate(context: vscode.ExtensionContext): void {
       void treeProvider.load();
     }),
     vscode.commands.registerCommand('featuremap.openFeature', (featureId?: string) => openFeature(featureId)),
+    vscode.commands.registerCommand('featuremap.searchFeatures', searchFeatures),
+    vscode.commands.registerCommand('featuremap.toggleGrouping', toggleGrouping),
     vscode.commands.registerCommand('featuremap.refresh', () => {
       void (async () => {
         await treeProvider.load();

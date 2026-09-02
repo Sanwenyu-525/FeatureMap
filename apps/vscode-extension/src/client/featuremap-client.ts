@@ -43,6 +43,8 @@ export interface IdeAsset {
   path?: string;
   name?: string;
   confidence: number;
+  /** Symbol assets resolve to a source location (Feature → Symbol → source). */
+  location?: { startLine: number; endLine: number };
 }
 
 export interface IdeFeatureDetail extends IdeFeature {
