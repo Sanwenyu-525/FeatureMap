@@ -506,6 +506,61 @@ program
   });
 
 program
+  .command('context')
+  .description('为功能或开发任务生成低噪声、可解释的 AI 上下文（Phase 5 / AI Context Layer）。Context 是知识图谱的只读投影，不修改任何图谱数据。')
+  .argument('<feature>', '功能名称或 ID（如 login）')
+  .option('--format <format>', '输出格式：markdown（默认）| json | agent', 'markdown')
+  .option('--budget <tokens>', 'Token 预算（默认 8000；按 section 重要性分配，而非截断）', (v) => Number.parseInt(v, 10))
+  .option('--no-include-history', '排除近期变更与变更风险')
+  .option('--no-include-tests', '排除相关测试')
+  .option('--depth <n>', '关系遍历深度（默认 3）', (v) => Number.parseInt(v, 10))
+  .option('--task <text>', '任务描述：仅改变 Context 排序（task-aware ranking，不改图谱）')
+  .action(async (feature: string, opts: {
+    format?: string;
+    budget?: number;
+    includeHistory?: boolean;
+    includeTests?: boolean;
+    depth?: number;
+    task?: string;
+  }) => {
+    try {
+      const { buildFeatureContext, buildFeatureContextDocument, renderContext } = await import('@featuremap/context');
+      const format = opts.format === 'json' || opts.format === 'agent' ? opts.format : 'markdown';
+      if (format === 'markdown') {
+        // Canonical renderer shared with the IDE (v0.6.5 plan §1.3) so
+        // CLI / IDE Copy / Preview / Save can never diverge.
+        const document = buildFeatureContextDocument(process.cwd(), feature, {
+          task: opts.task,
+          budget: opts.budget,
+          depth: opts.depth,
+          includeHistory: opts.includeHistory,
+          includeTests: opts.includeTests,
+        });
+        console.log(document.markdown);
+        return;
+      }
+      const context = buildFeatureContext(process.cwd(), feature, {
+        format,
+        budget: opts.budget,
+        task: opts.task,
+        includeHistory: opts.includeHistory,
+        includeTests: opts.includeTests,
+        depth: opts.depth,
+      });
+      const rendered = renderContext(context, format);
+      if (typeof rendered === 'string') {
+        console.log(rendered);
+      } else {
+        console.log(JSON.stringify(rendered, null, 2));
+      }
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      console.error(e.code ? `[${e.code}]` : '', e.message ?? String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('inspect')
   .description('查看某个文件的代码图邻域：包含符号、导出、导入、调用、被调用。')
   .argument('<file>', '仓库相对路径（如 src/auth/login.js）')
@@ -607,6 +662,20 @@ program
       const { startMcpStdio } = await import('@featuremap/mcp');
       await startMcpStdio({ repoRoot: process.cwd() });
       // stdio transport keeps the process alive; Ctrl+C terminates.
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('ide')
+  .description('以 stdio JSON-RPC 方式运行 FeatureMap IDE 服务（Phase 6 / ADR-0008；供编辑器扩展派生使用）。')
+  .action(async () => {
+    try {
+      const { startIdeStdio } = await import('@featuremap/ide');
+      await startIdeStdio({ repoRoot: process.cwd() });
+      // stdio transport keeps the process alive; the extension owns shutdown.
     } catch (err) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exitCode = 1;

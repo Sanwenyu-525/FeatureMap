@@ -13,7 +13,9 @@
     "test": "echo \"no cli tests yet\" && exit 0"
   },
   "dependencies": {
+    "@featuremap/context": "workspace:*",
     "@featuremap/core": "workspace:*",
+    "@featuremap/ide": "workspace:*",
     "@featuremap/mcp": "workspace:*",
     "@featuremap/pipeline": "workspace:*",
     "@featuremap/scm": "workspace:*",

@@ -1,0 +1,30 @@
+{
+  "name": "@featuremap/context",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap AI context layer: ranked, budgeted, evidence-backed projections of the feature knowledge graph (Phase 5).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/core": "workspace:*",
+    "@featuremap/db": "workspace:*",
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "@featuremap/analyzer": "workspace:*",
+    "@featuremap/tsconfig": "workspace:*",
+    "vitest": "^2.1.8"
+  }
+}

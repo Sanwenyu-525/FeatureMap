@@ -27,6 +27,8 @@
 import { eq, inArray } from 'drizzle-orm';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
 import { analyzeImpact, type ImpactResult } from './impact.js';
+import { computeDrift } from './drift/compute-drift.js';
+import type { DriftKind } from './drift/drift-types.js';
 
 export type RiskBand = 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -47,8 +49,6 @@ export interface PrTestCoverage {
   /** True when this test path changed in the diff (✓); false = potential missing coverage (⚠). */
   changed: boolean;
 }
-
-export type DriftKind = 'relation_broken' | 'new_candidate';
 
 export interface MappingDrift {
   kind: DriftKind;
@@ -146,21 +146,6 @@ function deriveRisk(impact: ImpactResult, changedPaths: ReadonlySet<string>, pub
   return { band, contributions };
 }
 
-/**
- * Strip the `symbol:` prefix so DB symbol ids can be compared with
- * candidate `targetId` values, which are stored without it
- * (packages/pipeline/src/candidates.ts).
- */
-function bareSymbolId(symbolId: string): string {
-  return symbolId.startsWith('symbol:') ? symbolId.slice('symbol:'.length) : symbolId;
-}
-
-/** Containing file of a bare symbol targetId (`path:name` → `path`). */
-function containingFileOfSymbol(targetId: string): string | undefined {
-  const colon = targetId.indexOf(':');
-  return colon > 0 ? targetId.slice(0, colon) : undefined;
-}
-
 export async function buildPrReport(repoRoot: string, options: PrOptions = {}): Promise<PrReport> {
   const { range, dbPath: dbPathOverride } = options;
   const dbPath = dbPathOverride ?? defaultDatabasePath(repoRoot);
@@ -219,57 +204,30 @@ export async function buildPrReport(repoRoot: string, options: PrOptions = {}): 
       .where(inArray(schema.featureCandidates.status, ['accepted', 'declared']))
       .all();
 
-    const drift: MappingDrift[] = [];
-    const seenDrift = new Set<string>();
-
-    // relation_broken: the file behind an accepted/declared relation was
-    // deleted or renamed — the mapping can no longer hold.
-    for (const c of confirmed) {
-      const file = c.targetType === 'file' ? c.targetId : containingFileOfSymbol(c.targetId);
-      if (!file) continue;
-      const changeType = changeTypeByPath.get(file);
-      if (changeType !== 'deleted' && changeType !== 'renamed') continue;
-      const key = `${c.featureId}:${c.targetType}:${c.targetId}`;
-      if (seenDrift.has(key)) continue;
-      seenDrift.add(key);
-      drift.push({
-        kind: 'relation_broken',
+    // Drift is computed by the shared ADR-0005 detector so the PR report
+    // and the IDE diagnostics can never diverge (v0.6.4 plan §1.2).
+    const drift: MappingDrift[] = computeDrift({
+      confirmed: confirmed.map((c) => ({
         featureId: c.featureId,
-        featureName: featureName.get(c.featureId),
-        targetId: c.targetId,
         targetType: c.targetType,
-        reason: `已确认的映射目标文件 ${file} ${changeType === 'deleted' ? '已被删除' : '已被重命名'}——该功能的映射可能已过期`,
-      });
-    }
-
-    // new_candidate: a changed symbol inside a feature-owned file that is
-    // not yet an accepted/declared relation. Detect → suggest only.
-    const confirmedSymbolIdsByFeature = new Map<string, Set<string>>();
-    for (const c of confirmed) {
-      if (c.targetType !== 'symbol') continue;
-      const set = confirmedSymbolIdsByFeature.get(c.featureId) ?? new Set<string>();
-      set.add(c.targetId);
-      confirmedSymbolIdsByFeature.set(c.featureId, set);
-    }
-    for (const sym of impact.changedSymbols) {
-      if (testPaths.has(sym.path)) continue;
-      const bare = bareSymbolId(sym.symbolId);
-      for (const [featureId, files] of ownedFilesByFeature) {
-        if (!files.has(sym.path)) continue;
-        if (confirmedSymbolIdsByFeature.get(featureId)?.has(bare)) continue;
-        const key = `${featureId}:${sym.symbolId}`;
-        if (seenDrift.has(key)) continue;
-        seenDrift.add(key);
-        drift.push({
-          kind: 'new_candidate',
-          featureId,
-          featureName: featureName.get(featureId),
-          targetId: sym.symbolId,
-          targetType: 'symbol',
-          reason: `变更符号 ${bare} 位于 ${featureId} 的归属文件 ${sym.path}，但尚未被确认——建议评审（detect → suggest）`,
-        });
-      }
-    }
+        targetId: c.targetId,
+        status: c.status,
+        score: c.score,
+        fingerprint: c.fingerprint,
+      })),
+      changeTypeByPath,
+      changedSymbols: impact.changedSymbols,
+      ownedFilesByFeature,
+      testPaths,
+      featureNames: featureName,
+    }).map((d) => ({
+      kind: d.kind,
+      featureId: d.featureId,
+      featureName: d.featureName,
+      targetId: d.targetId,
+      targetType: d.targetType,
+      reason: d.reason,
+    }));
 
     const risk = deriveRisk(impact, changedPaths, publicApiChanged);
 

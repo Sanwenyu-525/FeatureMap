@@ -1,0 +1,32 @@
+{
+  "name": "@featuremap/ide",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap IDE service: headless stdio JSON-RPC for editor extensions (Phase 6 / ADR-0008).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/context": "workspace:*",
+    "@featuremap/core": "workspace:*",
+    "@featuremap/db": "workspace:*",
+    "@featuremap/pipeline": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@featuremap/tsconfig": "workspace:*",
+    "vitest": "^2.1.8"
+  }
+}

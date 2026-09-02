@@ -10,7 +10,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { isSurfaceable } from '@featuremap/core';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
-import { analyzeImpact } from '@featuremap/pipeline';
+import { analyzeImpact, explainCandidate } from '@featuremap/pipeline';
+import { buildFeatureContext, type CodeEntry, type ContextEvidence, type FeatureContext } from '@featuremap/context';
 
 export interface ToolContext {
   repoRoot: string;
@@ -83,9 +84,80 @@ export async function getFeature(ctx: ToolContext, input: { featureId: string })
 
 const ALL_SECTIONS = ['flow', 'code', 'apis', 'data', 'tests', 'documents', 'instructions', 'changes'] as const;
 
+/** Error envelope shared by every tool (same shape as FEATURE_NOT_FOUND below). */
+function toError(err: unknown): { error: { code: string; message: string } } {
+  const e = err as { code?: string; message?: string };
+  return {
+    error: {
+      code: e.code && typeof e.code === 'string' ? e.code : 'INTERNAL',
+      message: e.message ?? String(err),
+    },
+  };
+}
+
+/** Compact stable projection of a CodeEntry for MCP output. */
+function entryView(e: CodeEntry): Record<string, unknown> {
+  return {
+    id: e.id,
+    type: e.kind,
+    file: e.file ?? null,
+    name: e.name ?? null,
+    symbol: e.name ?? null,
+    symbolType: e.symbolType ?? null,
+    role: e.role,
+    status: e.status ?? null,
+    isAnchor: e.isAnchor,
+    distance: e.distance,
+    fanIn: e.fanIn,
+    score: e.score,
+    tier: e.tier,
+    confidence: e.confidence,
+    relations: e.relations,
+    taskMatched: e.taskMatched ?? false,
+    evidence: e.evidence.map((ev) => ({
+      analyzerId: ev.analyzerId,
+      origin: ev.origin,
+      confidence: ev.confidence,
+      relationType: ev.relationType ?? null,
+    })),
+  };
+}
+
+function evidenceView(evidence: ContextEvidence[]): Array<Record<string, unknown>> {
+  return evidence.map((ev) => ({
+    analyzerId: ev.analyzerId,
+    origin: ev.origin,
+    confidence: ev.confidence,
+    relationType: ev.relationType ?? null,
+    sourceId: ev.sourceId ?? null,
+    targetId: ev.targetId ?? null,
+    note: ev.note ?? null,
+  }));
+}
+
+export { evidenceView };
+
+/** Build a FeatureContext through the shared public API (adapter, MCP_SPEC §4). */
+function contextOf(
+  ctx: ToolContext,
+  featureId: string,
+  input: { budget?: number; task?: string; includeHistory?: boolean; includeTests?: boolean } = {},
+): FeatureContext {
+  return buildFeatureContext(ctx.repoRoot, featureId, {
+    format: 'json',
+    budget: input.budget,
+    task: input.task,
+    includeHistory: input.includeHistory,
+    includeTests: input.includeTests,
+    dbPath: ctx.dbPath,
+  });
+}
+
 /**
  * get_feature_context — primary agent context tool (MCP_SPEC §3).
- * Output is bounded by maxItemsPerSection and ranked by evidence strength.
+ * Delegates to @featuremap/context (Phase 5 builder); the old
+ * include/maxItemsPerSection arguments remain accepted for
+ * backward compatibility and cap the returned sections.
  */
 export async function getFeatureContext(
   ctx: ToolContext,
@@ -93,116 +165,185 @@ export async function getFeatureContext(
     featureId: string;
     include?: Array<(typeof ALL_SECTIONS)[number]>;
     maxItemsPerSection?: number;
+    budget?: number;
+    task?: string;
   },
 ): Promise<unknown> {
-  const include = input.include ?? [...ALL_SECTIONS];
-  const max = input.maxItemsPerSection ?? 20;
-  return withDb(ctx, async (db) => {
-    const f = db
-      .select()
-      .from(schema.features)
-      .where(eq(schema.features.id, input.featureId))
-      .all()[0];
-    if (!f) return { error: { code: 'FEATURE_NOT_FOUND', message: `Unknown feature: ${input.featureId}` } };
-
-    const rows = db
-      .select()
-      .from(schema.featureAssets)
-      .where(eq(schema.featureAssets.featureId, f.id))
-      .all()
-      .flatMap((fa) => {
-        const asset = db.select().from(schema.assets).where(eq(schema.assets.id, fa.assetId)).all()[0];
-        return asset ? [{ asset, confidence: fa.confidence }] : [];
-      })
-      .filter((r) => isSurfaceable(r.confidence));
-
-    // Ranking: anchors (deterministic direct) first, then high-confidence
-    // inferred closure files (MCP_SPEC §4).
-    const ranked = [...rows].sort((a, b) => b.confidence - a.confidence);
-
+  try {
+    const c = contextOf(ctx, input.featureId, { budget: input.budget, task: input.task });
+    const max = input.maxItemsPerSection ?? 20;
     const section = <T>(enabled: boolean, items: T[]): T[] => (enabled ? items.slice(0, max) : []);
-
-    const code = section(
-      include.includes('code'),
-      ranked
-        .filter(
-          (r) =>
-            r.asset.type === 'file' ||
-            r.asset.type === 'symbol' ||
-            r.asset.type === 'test' ||
-            r.asset.type === 'cli_command',
-        )
-        .map((r) => ({
-          type: r.asset.type,
-          path: r.asset.path ?? undefined,
-          name: r.asset.name ?? undefined,
-          confidence: r.confidence,
-        })),
-    );
-    const apis = section(
-      include.includes('apis'),
-      ranked
-        .filter((r) => r.asset.type === 'endpoint')
-        .map((r) => ({ name: r.asset.name ?? '', path: r.asset.path ?? undefined })),
-    );
-    const data = section(
-      include.includes('data'),
-      ranked
-        .filter((r) => r.asset.type === 'data_entity')
-        .map((r) => ({ name: r.asset.name ?? '', path: r.asset.path ?? undefined })),
-    );
-    const tests = section(
-      include.includes('tests'),
-      ranked
-        .filter((r) => r.asset.type === 'test')
-        .map((r) => ({ path: r.asset.path ?? '' })),
-    );
-    const documents = section(
-      include.includes('documents'),
-      db
-        .select()
-        .from(schema.featureDocuments)
-        .where(eq(schema.featureDocuments.featureId, f.id))
-        .all()
-        .map((fd) => fd.documentId)
-        .slice(0, max),
-    );
-    // Instruction extraction lands with Milestone 2 follow-up; report
-    // empty rather than guessing rules (AGENTS.md §3.2).
-    const instructions = section(include.includes('instructions'), [] as string[]);
-
-    let changes: Array<{ path: string; changeType: string }> = [];
-    if (include.includes('changes')) {
-      const impact = await analyzeImpact(ctx.repoRoot, { dbPath: ctx.dbPath });
-      const affected = impact.affectedFeatures.find((af) => af.featureId === f.id);
-      changes = affected
-        ? impact.changedFiles.filter((c) => changedTouchesFeature(affected.reasons, c.path)).slice(0, max)
-        : [];
-    }
-
-    const evidenceSummary = db
-      .select()
-      .from(schema.evidence)
-      .where(sql`${schema.evidence.targetType} = 'feature' and ${schema.evidence.targetId} = ${f.id}`)
-      .all()
-      .slice(0, max)
-      .map((e) => ({
-        source: e.sourceId,
-        confidence: e.confidence,
-        analyzerId: e.analyzerId,
-      }));
-
+    const include = input.include ?? [...ALL_SECTIONS];
     return {
-      feature: { id: f.id, name: f.name, pattern: f.pattern, confidence: f.confidence },
-      health: (f.health ?? undefined) as Record<string, string> | undefined,
-      sections: { code, apis, data, tests, documents, instructions, changes },
-      evidenceSummary,
+      feature: { id: c.feature.id, name: c.feature.name, pattern: c.feature.pattern, confidence: c.feature.confidence },
+      health: c.feature.health ?? null,
+      purpose: c.purpose ?? null,
+      sections: {
+        code: section(include.includes('code'), c.coreCode.map(entryView)),
+        apis: section(include.includes('apis'), c.entryPoints.map(entryView)),
+        data: section(
+          include.includes('data'),
+          c.coreCode.filter((e) => e.kind === 'data_entity').map(entryView),
+        ),
+        tests: section(include.includes('tests'), c.tests.map(entryView)),
+        documents: section(include.includes('documents'), c.policies.map((p) => p.source)),
+        instructions: section(
+          include.includes('instructions'),
+          c.policies.map((p) => ({ text: p.text, level: p.level, source: p.source, scope: p.scope ?? null })),
+        ),
+        changes: section(include.includes('changes'), c.recentChanges),
+      },
+      risks: c.changeRisks,
+      budget: c.budget,
+      evidence: c.evidence,
+      truncationNote: c.truncationNote ?? null,
     };
-  });
+  } catch (err) {
+    return toError(err);
+  }
 }
 
-function changedTouchesFeature(reasons: string[], changedPath: string): boolean {
-  return reasons.some((r) => r.startsWith(changedPath) || r.includes(` ${changedPath} `));
+/** get_related_code — the ranked code an agent should read first. */
+export async function getRelatedCode(
+  ctx: ToolContext,
+  input: { featureId: string; budget?: number; task?: string; maxItems?: number },
+): Promise<unknown> {
+  try {
+    const c = contextOf(ctx, input.featureId, { budget: input.budget, task: input.task });
+    const items = [...c.entryPoints, ...c.coreCode, ...c.dependencies];
+    const top = items.slice(0, input.maxItems ?? 30).map(entryView);
+    return {
+      feature: { id: c.feature.id, name: c.feature.name },
+      recommendedFilesToInspect: top
+        .map((e) => e['file'] as string | null)
+        .filter((f): f is string => !!f)
+        .slice(0, 12),
+      code: top,
+    };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/** get_feature_dependencies — what this feature depends on (deps + dependents). */
+export async function getFeatureDependencies(
+  ctx: ToolContext,
+  input: { featureId: string; budget?: number; includeDependents?: boolean },
+): Promise<unknown> {
+  try {
+    const c = contextOf(ctx, input.featureId, { budget: input.budget });
+    return {
+      feature: { id: c.feature.id, name: c.feature.name },
+      dependencies: c.dependencies.map(entryView),
+      dependents: input.includeDependents === false ? [] : c.dependents.map(entryView),
+    };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/** get_related_tests — tests associated with the feature. */
+export async function getRelatedTests(
+  ctx: ToolContext,
+  input: { featureId: string; budget?: number },
+): Promise<unknown> {
+  try {
+    const c = contextOf(ctx, input.featureId, { budget: input.budget });
+    return {
+      feature: { id: c.feature.id, name: c.feature.name },
+      tests: c.tests.map(entryView),
+      // Deterministic note: a recommendation, never a coverage claim.
+      note: c.tests.length > 0 ? undefined : '该功能没有已关联的测试文件（可能是扫描时未检测到，或确实缺失）。',
+    };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/** get_change_impact — features affected by the current Git diff (impact API). */
+export async function getChangeImpact(
+  ctx: ToolContext,
+  input: { base?: string; range?: string; minimumConfidence?: number } = {},
+): Promise<unknown> {
+  try {
+    const impact = await analyzeImpact(ctx.repoRoot, {
+      range: input.range ?? input.base,
+      dbPath: ctx.dbPath,
+    });
+    const min = input.minimumConfidence ?? 0.5;
+    return {
+      affectedFeatures: impact.affectedFeatures
+        .filter((f) => f.confidence >= min)
+        .map((f) => ({
+          featureId: f.featureId,
+          featureName: f.featureName,
+          confidence: f.confidence,
+          severity: f.severity,
+          reasons: f.reasons,
+          tests: f.tests,
+        })),
+      sharedInfrastructure: impact.sharedInfrastructure,
+      suppressedUncertainty: impact.suppressedUncertainty,
+      recommendedTests: impact.recommendedTests,
+    };
+  } catch (err) {
+    return toError(err);
+  }
+}
+
+/** explain_relation — full evidence chain behind a candidate/relation. */
+export async function explainRelation(
+  ctx: ToolContext,
+  input: { featureId: string; target: string },
+): Promise<unknown> {
+  try {
+    // Adapter: reuse the review workflow's chain when the target is a
+    // candidate relation; otherwise fall back to raw evidence edges.
+    try {
+      const explained = explainCandidate(ctx.repoRoot, input.featureId, input.target, ctx.dbPath);
+      return {
+        featureId: explained.featureId,
+        targetId: explained.targetId,
+        targetType: explained.targetType,
+        relation: explained.relation,
+        status: explained.status,
+        score: explained.score,
+        distance: explained.distance,
+        fanIn: explained.fanIn,
+        chain: explained.chain,
+        fingerprint: explained.fingerprint,
+      };
+    } catch {
+      // Fallback: match evidence edges touching the feature.
+      return withDb(ctx, (db) => {
+        const rows = db
+          .select()
+          .from(schema.evidence)
+          .where(
+            sql`${schema.evidence.targetType} = 'feature' and (${schema.evidence.sourceId} = ${input.target} or ${schema.evidence.targetId} = ${input.target})`,
+          )
+          .all()
+          .map((e) => ({
+            sourceId: e.sourceId,
+            relationType: e.relationType,
+            targetId: e.targetId,
+            confidence: e.confidence,
+            analyzerId: e.analyzerId,
+            origin: e.origin,
+          }));
+        if (rows.length === 0) {
+          return { error: { code: 'RELATION_NOT_FOUND', message: `No relation for "${input.target}" on feature ${input.featureId}.` } };
+        }
+        return {
+          featureId: input.featureId,
+          target: input.target,
+          evidenceRows: rows,
+        };
+      });
+    }
+  } catch (err) {
+    return toError(err);
+  }
 }
 
 /** get_affected_features — analyze the current Git diff (MCP_SPEC §3). */

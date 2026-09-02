@@ -106,6 +106,8 @@ function collectSymbols(output: PlatformOutput): Array<{
   name: string;
   kind: string;
   exported: boolean;
+  startLine?: number;
+  endLine?: number;
 }> {
   const symbols: Array<{
     id: string;
@@ -113,16 +115,20 @@ function collectSymbols(output: PlatformOutput): Array<{
     name: string;
     kind: string;
     exported: boolean;
+    startLine?: number;
+    endLine?: number;
   }> = [];
   for (const asset of output.assets) {
     if (asset.type !== 'symbol' || asset.path === undefined || asset.name === undefined) continue;
-    const meta = (asset.metadata ?? {}) as { kind?: string; exported?: boolean };
+    const meta = (asset.metadata ?? {}) as { kind?: string; exported?: boolean; startLine?: number; endLine?: number };
     symbols.push({
       id: `symbol:${asset.path}:${asset.name}`,
       path: asset.path,
       name: asset.name,
       kind: meta.kind ?? 'symbol',
       exported: meta.exported ?? false,
+      startLine: meta.startLine,
+      endLine: meta.endLine,
     });
   }
   return symbols;
@@ -432,6 +438,8 @@ export async function runScan(repoRoot: string, options: ScanOptions = {}): Prom
           fileId: assetId({ type: 'file', path: sym.path }),
           name: sym.name,
           kind: sym.kind,
+          startLine: sym.startLine ?? null,
+          endLine: sym.endLine ?? null,
         })
         .onConflictDoNothing()
         .run();

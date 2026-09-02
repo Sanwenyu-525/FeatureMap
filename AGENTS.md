@@ -292,3 +292,29 @@ FeatureMap's credibility depends on users being able to answer:
 
 > Why does the system believe this code belongs to this feature?
 
+## 16. AI Context Layer (Phase 5 / `packages/context`)
+
+- A `FeatureContext` is a **read-only projection** of the Feature
+  Knowledge Graph, built by `buildFeatureContext(repoRoot, id, options)`.
+  Never write graph rows from context code; never let context become a
+  second source of truth.
+- Do **not** re-implement feature mapping inside context. Ranking reads
+  `feature_candidates`, `feature_assets`, `evidence`, commits, and
+  instructions — nothing else.
+- Rejected candidates (`rejected`/`superseded`) and below-threshold
+  scores never enter a context.
+- Context guides code discovery; it does **not** duplicate the
+  repository. Output paths, symbols, roles, signatures, relations, and
+  evidence — not source bodies.
+- Ranking is deterministic and precision-first: anchors and
+  human-confirmed (`declared`/`accepted`) relations outrank suggestions;
+  fan-in ≥ 3 shared infrastructure is down-weighted; tiers are
+  1=core / 2=direct dependencies / 3=influence relations / 4=background.
+- Token budgeting allocates by section importance (core 40%, deps 20%,
+  tests 15%, policies 10%, changes 10%, other 5%) and redistributes
+  leftover budget; it is never plain string truncation.
+- Task-aware ranking changes ordering only (`--task`), never the graph;
+  rule-based term boosts preferred over LLM.
+- CLI, MCP, and future HTTP/IDE surfaces are consumers of the same
+  context API; MCP remains a thin adapter (`packages/mcp`).
+
