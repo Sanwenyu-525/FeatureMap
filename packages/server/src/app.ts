@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { openDatabase, defaultDatabasePath, schema } from '@featuremap/db';
+import { buildFeatureContextDocument, FeatureContextError } from '@featuremap/context';
 import { runScan, analyzeImpact, setVerdict, ReviewError, featureTimeline } from '@featuremap/pipeline';
 import type {
   AnalyzerStatusDto,
@@ -330,6 +331,36 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
       status: r.status,
       diagnostics: (r.diagnostics ?? []) as AnalyzerStatusDto['diagnostics'],
     }));
+  });
+
+  /**
+   * POST /api/context — the canonical read-only FeatureContext document
+   * (v0.7.0, Milestone 25 §Stage 1). One endpoint, task in the POST body
+   * only; the response is the exact `FeatureContextDocument` the CLI /
+   * MCP / IDE render (no HTTP-only DTO). `Cache-Control: no-store`
+   * because the projection depends on live graph + working-tree state.
+   */
+  app.post('/api/context', async (req, reply) => {
+    const body = (req.body ?? {}) as { featureId?: unknown; task?: unknown };
+    if (typeof body.featureId !== 'string' || body.featureId === '') {
+      return fail(reply, 'INVALID_CONFIG', 'featureId is required.', 400);
+    }
+    if (body.task !== undefined && typeof body.task !== 'string') {
+      return fail(reply, 'INVALID_CONFIG', 'task must be a string.', 400);
+    }
+    try {
+      const document = buildFeatureContextDocument(options.repoRoot, body.featureId, {
+        task: body.task,
+        dbPath,
+      });
+      reply.header('cache-control', 'no-store');
+      return reply.send(document);
+    } catch (err) {
+      if (err instanceof FeatureContextError && err.code === 'FEATURE_NOT_FOUND') {
+        return fail(reply, 'FEATURE_NOT_FOUND', `Feature "${body.featureId}" does not exist.`, 404);
+      }
+      return fail(reply, 'CONTEXT_BUILD_FAILED', err instanceof Error ? err.message : String(err), 500);
+    }
   });
 
   app.addHook('onClose', async () => {

@@ -167,3 +167,71 @@ describe('POST /api/features/:id/candidates/verdict', () => {
     expect(unknown.json().error.code).toBe('CANDIDATE_NOT_FOUND');
   });
 });
+
+describe('POST /api/context (v0.7.0 Milestone 25 §Stage 1)', () => {
+  it('returns the canonical read-only document with no-store caching', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/context',
+      payload: { featureId: 'feature:login' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    const body = res.json() as {
+      formatVersion: number;
+      contextId: string;
+      feature: { name: string };
+      sections: { core: unknown[]; changes: unknown[] };
+      recommendedFiles: unknown[];
+      markdown: string;
+      artifact: { relativePath: string };
+    };
+    expect(body.formatVersion).toBe(1);
+    expect(body.feature.name).toBe('Login');
+    expect(body.contextId).toBe('login');
+    expect(body.artifact.relativePath).toBe('.featuremap/context/login.md');
+    expect(body.sections.core.length).toBeGreaterThan(0);
+    expect(Array.isArray(body.sections.changes)).toBe(true);
+    expect(body.markdown).toContain('# Feature Context: Login');
+    expect(body.markdown).toContain('## Recommended Files');
+  });
+
+  it('is task-aware through the POST body only (task lives in the body)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/context',
+      payload: { featureId: 'feature:login', task: '  Add refresh token rotation  ' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { task?: string; markdown: string; contextId: string };
+    expect(body.task).toBe('Add refresh token rotation');
+    expect(body.markdown).toContain('## Task');
+    expect(body.contextId).not.toBe('login');
+  });
+
+  it('rejects a missing featureId with INVALID_CONFIG (400)', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/context', payload: {} });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_CONFIG');
+  });
+
+  it('rejects a non-string task with INVALID_CONFIG (400)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/context',
+      payload: { featureId: 'feature:login', task: 123 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_CONFIG');
+  });
+
+  it('maps an unknown feature to FEATURE_NOT_FOUND (404)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/context',
+      payload: { featureId: 'feature:nope' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe('FEATURE_NOT_FOUND');
+  });
+});
