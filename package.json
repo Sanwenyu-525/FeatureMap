@@ -14,7 +14,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "benchmark:mapping": "pnpm --filter @featuremap/pipeline benchmark:mapping"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
