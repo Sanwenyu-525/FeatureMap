@@ -778,6 +778,63 @@ Exit criteria: a developer can produce a task-aware context for a task
 like "fix login session expiration" entirely in the IDE and copy it to
 an external AI tool.
 
+### Milestone 25 — Web API Loop (v0.7.0)
+
+Status: planned. Reviewed by the web-planning loop (ChatGPT) before
+implementation: freeze the Feature Context contract first, then expose
+the canonical read-only projection over the local HTTP API and dogfood
+that contract through a minimal Web Context panel. Four consumer
+surfaces (CLI / MCP / IDE / HTTP) must render the same
+`FeatureContextDocument` from one golden contract fixture.
+
+Goal: make `FeatureContextDocument` a stable cross-surface API contract
+— not merely "a fourth entry point". Freeze the contract, expose it via
+a single `POST /api/context`, and prove the chain end-to-end in a thin
+Web panel.
+
+Implement:
+
+- Stage 0 — Contract & Location Freeze: lock `formatVersion === 1`,
+  field optionality, section-key stability, empty-section behavior,
+  Recommended Files ordering, `artifact.relativePath` semantics,
+  1-based line/column convention (cross-surface, never re-derived per
+  adapter), task trim normalization, deterministic `contextId`, error
+  envelope, read-only invariant. Golden contract fixture shared by
+  CLI / MCP / IDE / HTTP.
+
+- Stage 1 — Context HTTP: `POST /api/context`
+  (`{ featureId, task? }` → `FeatureContextDocument`, no HTTP-only
+  DTO, `Cache-Control: no-store`). `task` lives only in the POST body
+  (free text; never in the URL/query). Errors: `FEATURE_NOT_FOUND`
+  (404), schema invalid (400), `INVALID_CONFIG` (422 or 500 by
+  nature), `CONTEXT_BUILD_FAILED` (500). No GET, no HTTP save
+  artifact (the API stays a read-only projection surface).
+
+- Stage 2 — Thin Web Context Panel: Feature Detail page gains Build /
+  Task input / Copy / Recommended Files / Markdown Preview (browser
+  renderer sanitizes HTML; Copy = canonical markdown via
+  `navigator.clipboard` in a click handler; explicit build, never
+  auto-built; Recommended Files copy path / reuse existing pages — no
+  Source Browser).
+
+- Stage 3 — Cross-Surface Contract CI: golden fixture asserts
+  `featureId` / `task` / `sections` / `recommendedFiles` / `markdown`
+  are identical across CLI / MCP / IDE RPC / HTTP; locks 1-based
+  lines, stable ordering, canonical markdown, no source bodies, no
+  mutation.
+
+- Stage 4 — HTTP + Web E2E: `POST /api/context` contract tests +
+  Playwright (Feature Detail → Build → Preview → Copy).
+
+- Stage 5 — Docs: `docs/API_SPEC.md` (`POST /api/context` + error
+  codes), this Milestone marked complete.
+
+Exit criteria: `curl -X POST localhost:7331/api/context -d '{"featureId":
+"authentication"}'` returns a portable canonical context; the Web
+panel builds and copies context in the browser; CLI / MCP / IDE / HTTP
+agree on the same canonical document for the golden fixture; `pnpm
+lint` / `typecheck` / `test` / `test:e2e` all green.
+
 ## Phase 3 acceptance scenario
 
 Fixture: a Login feature (LoginPage, LoginForm, AuthService.login,

@@ -304,6 +304,34 @@ export interface BuildContextDocumentOptions {
   includeTests?: boolean;
 }
 
+/**
+ * Derive the canonical presentation document from an already-built
+ * FeatureContext. Shared by every surface that has the full context in
+ * hand (CLI / MCP / IDE / HTTP) so a second build is never needed.
+ */
+export function documentFromContext(context: FeatureContext, task?: string): FeatureContextDocument {
+  const normalizedTask = normalizeTask(task);
+  const contextId = contextIdOf(context.feature.id, normalizedTask);
+  const sections = mapDocumentSections(context);
+  const recommendedFiles = deriveRecommendedFiles(sections, context.feature.name);
+  const document: FeatureContextDocument = {
+    formatVersion: 1,
+    contextId,
+    feature: { id: context.feature.id, name: context.feature.name },
+    task: normalizedTask,
+    sections,
+    recommendedFiles,
+    budget: {
+      requested: context.budget.requested,
+      estimatedTotal: context.budget.estimatedTotal,
+      allocation: context.budget.allocation,
+    },
+    artifact: { relativePath: `.featuremap/context/${contextId}.md` },
+    markdown: '',
+  };
+  return { ...document, markdown: renderFeatureContextMarkdown(document) };
+}
+
 /** Build the canonical presentation document (wraps the read-only builder). */
 export function buildFeatureContextDocument(
   repoRoot: string,
@@ -319,23 +347,5 @@ export function buildFeatureContextDocument(
     includeHistory: options.includeHistory,
     includeTests: options.includeTests,
   });
-  const contextId = contextIdOf(featureId, task);
-  const sections = mapDocumentSections(context);
-  const recommendedFiles = deriveRecommendedFiles(sections, context.feature.name);
-  const document: FeatureContextDocument = {
-    formatVersion: 1,
-    contextId,
-    feature: { id: context.feature.id, name: context.feature.name },
-    task,
-    sections,
-    recommendedFiles,
-    budget: {
-      requested: context.budget.requested,
-      estimatedTotal: context.budget.estimatedTotal,
-      allocation: context.budget.allocation,
-    },
-    artifact: { relativePath: `.featuremap/context/${contextId}.md` },
-    markdown: '',
-  };
-  return { ...document, markdown: renderFeatureContextMarkdown(document) };
+  return documentFromContext(context, task);
 }

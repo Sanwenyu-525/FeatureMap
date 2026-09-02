@@ -128,6 +128,44 @@ export interface AnalyzerStatus {
   diagnostics: Array<{ level: string; code: string; message: string; path?: string }>;
 }
 
+/** Context document entry (v0.7.0 — mirrors the server FeatureContextDocument). */
+export interface ContextDocumentEntry {
+  path: string;
+  role: 'core' | 'dependency' | 'test' | 'policy' | 'change' | 'other';
+  symbol?: { id?: string; name: string; signature?: string; startLine?: number; endLine?: number };
+  relation?: { type: string; featureId?: string; targetId?: string };
+  evidence?: Array<{ relationType?: string; confidence?: number; analyzerId?: string }>;
+  summary?: string;
+}
+
+export interface ContextRecommendedFile {
+  path: string;
+  roles: ContextDocumentEntry['role'][];
+  reason: string;
+  location?: { startLine: number; endLine?: number };
+  symbols?: Array<{ name: string; signature?: string; startLine?: number }>;
+}
+
+export interface ContextDocument {
+  formatVersion: 1;
+  contextId: string;
+  feature: { id: string; name: string };
+  task?: string;
+  sections: {
+    purpose?: string;
+    core: ContextDocumentEntry[];
+    dependencies: ContextDocumentEntry[];
+    tests: ContextDocumentEntry[];
+    policies: ContextDocumentEntry[];
+    changes: ContextDocumentEntry[];
+    other: ContextDocumentEntry[];
+  };
+  recommendedFiles: ContextRecommendedFile[];
+  budget?: { requested: number; estimatedTotal: number; allocation: Record<string, number> };
+  markdown: string;
+  artifact: { relativePath: string };
+}
+
 export class ApiRequestError extends Error {
   readonly code: string;
   readonly status: number;
@@ -175,4 +213,9 @@ export const api = {
         body: JSON.stringify({ targetId, verdict }),
       },
     ),
+  context: (featureId: string, task?: string) =>
+    request<ContextDocument>('/context', {
+      method: 'POST',
+      body: JSON.stringify({ featureId, task }),
+    }),
 };

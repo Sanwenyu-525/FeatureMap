@@ -381,6 +381,9 @@ importers:
       '@fastify/static':
         specifier: ^8.0.3
         version: 8.3.0
+      '@featuremap/context':
+        specifier: workspace:*
+        version: link:../context
       '@featuremap/core':
         specifier: workspace:*
         version: link:../core
@@ -397,6 +400,12 @@ importers:
         specifier: ^5.2.1
         version: 5.12.1
     devDependencies:
+      '@featuremap/ide':
+        specifier: workspace:*
+        version: link:../ide
+      '@featuremap/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@featuremap/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
