@@ -1,0 +1,55 @@
+{
+  "name": "featuremap-vscode",
+  "displayName": "FeatureMap",
+  "version": "0.0.1",
+  "private": true,
+  "description": "FeatureMap IDE Intelligence — Feature knowledge in your editing path (Phase 6, ADR-0008).",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:featuremap.features",
+    "workspaceContains:.featuremap",
+    "workspaceContains:featuremap.yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "featuremap.showFeatures", "title": "FeatureMap: Show Features" },
+      { "command": "featuremap.initializeAndScan", "title": "FeatureMap: Initialize & Scan" },
+      { "command": "featuremap.openFeature", "title": "FeatureMap: Open Feature" },
+      { "command": "featuremap.refresh", "title": "FeatureMap: Refresh" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "featuremap", "title": "FeatureMap", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "featuremap": [
+        { "id": "featuremap.features", "name": "Features", "when": "featuremap.connected" }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "featuremap.refresh", "when": "view == featuremap.features", "group": "navigation" }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --pretty",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@featuremap/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

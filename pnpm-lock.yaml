@@ -41,6 +41,9 @@ importers:
       '@featuremap/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@featuremap/ide':
+        specifier: workspace:*
+        version: link:../../packages/ide
       '@featuremap/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -87,6 +90,25 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
+
+  apps/vscode-extension:
+    dependencies:
+      '@featuremap/cli':
+        specifier: workspace:*
+        version: link:../cli
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.1
+      '@types/vscode':
+        specifier: ^1.90.0
+        version: 1.134.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
 
   apps/web:
     dependencies:
@@ -215,6 +237,31 @@ importers:
       drizzle-kit:
         specifier: ^0.30.2
         version: 0.30.6
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
+
+  packages/ide:
+    dependencies:
+      '@featuremap/core':
+        specifier: workspace:*
+        version: link:../core
+      '@featuremap/db':
+        specifier: workspace:*
+        version: link:../db
+      '@featuremap/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
+      drizzle-orm:
+        specifier: ^0.38.3
+        version: 0.38.4(@types/better-sqlite3@7.6.13)(@types/react@18.3.31)(better-sqlite3@11.10.0)(react@18.3.1)
+      yaml:
+        specifier: ^2.7.0
+        version: 2.9.0
+    devDependencies:
+      '@featuremap/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.32.0)
@@ -1469,6 +1516,9 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/vscode@1.134.0':
+    resolution: {integrity: sha512-NDEu0hg4sF7+vvFsADsktqUJ6f80LHSZvVK2Ovo1XiQ0/VHck1O3zst+ZZyVA/uvz6vo6LcuoqU2q48YMqOwWw==}
 
   '@typescript-eslint/eslint-plugin@8.69.0':
     resolution: {integrity: sha512-t5jQTKPIgVW1PE6dR6H6Qz5gm8zjMlX5/2gRaOGd9eO6V7J+tQc6iWKukEe7dY8u9HyYasQ0yfF0/FSSTEO2gA==}
@@ -4102,6 +4152,8 @@ snapshots:
       csstype: 3.2.3
 
   '@types/unist@3.0.3': {}
+
+  '@types/vscode@1.134.0': {}
 
   '@typescript-eslint/eslint-plugin@8.69.0(@typescript-eslint/parser@8.69.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:

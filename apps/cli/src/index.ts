@@ -656,6 +656,20 @@ program
   });
 
 program
+  .command('ide')
+  .description('以 stdio JSON-RPC 方式运行 FeatureMap IDE 服务（Phase 6 / ADR-0008；供编辑器扩展派生使用）。')
+  .action(async () => {
+    try {
+      const { startIdeStdio } = await import('@featuremap/ide');
+      await startIdeStdio({ repoRoot: process.cwd() });
+      // stdio transport keeps the process alive; the extension owns shutdown.
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('doctor')
   .description('报告检测到的技术栈、配置错误、Git 状态与 LLM 配置。')
   .action(async () => {
